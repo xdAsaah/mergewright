@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "mergewright",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Land your first merged PR — then keep landing them. A cross-session workbench that finds real candidates, proves the bug, and remembers every repo.",
   "author": {
     "name": "xdAsaah",

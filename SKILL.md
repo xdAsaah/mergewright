@@ -44,6 +44,21 @@ python scripts/prtool.py init
 2. 环境变量 `MERGEWRIGHT_HOME`
 3. 默认 `~/.mergewright/`
 
+**默认值不要改。** `~/.mergewright` 是唯一在「多 agent、多机器、任何操作系统」上都成立的默认位置；想换盘是**本机的事**，两种改法都不用动技能：
+
+```powershell
+# 办法一：只给设了变量的进程/用户换位置（各 agent 要各自继承到）
+setx MERGEWRIGHT_HOME "D:\mergewright"
+
+# 办法二：搬走 + 建目录联接，所有 agent 的默认路径继续能用
+robocopy "$env:USERPROFILE\.mergewright" "D:\mergewright" /E /MOVE
+cmd /c mklink /J "$env:USERPROFILE\.mergewright" "D:\mergewright"
+```
+
+⚠️ 删这个联接只能用 `cmd /c rmdir "%USERPROFILE%\.mergewright"`，**不要用 `Remove-Item -Recurse`**——那会顺着链接删掉 D 盘里的真实数据。
+
+数据目录现在只有几百 KB，**挪盘解决不了 C 盘空间问题**（吃空间的是缓存和依赖）；挪它只是为了长期增长的数据落在容量大的盘上，以及备份位置可控。
+
 **为什么这样分**：同一台机器上可能装了 Trae、Claude Code、Codex 各一份 skill。如果数据跟着包走，切到另一个 agent 就是一份空档案，前面做过什么全不知道。分开之后，不管用哪个 agent，打开的都是同一份执行记录。
 
 skill 包里的 `_seed/` 是空模板，`init` 时拷到数据目录。**不要直接改 `_seed/` 里的文件**——那是模板，改了会影响下次初始化。
