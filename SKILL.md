@@ -48,6 +48,30 @@ python scripts/prtool.py init
 
 skill 包里的 `_seed/` 是空模板，`init` 时拷到数据目录。**不要直接改 `_seed/` 里的文件**——那是模板，改了会影响下次初始化。
 
+### 本地工作副本在哪
+
+数据共用解决了「记录在哪」，但没解决「**代码在哪**」。同一个项目在不同 agent 里可能 clone 在不同盘、不同目录，甚至不同机器上。
+
+所以每个项目第一次进场时，把工作副本路径记下来：
+
+```bash
+python scripts/prtool.py where --project <项目> --path <本地仓库路径>
+```
+
+`onboard --path` 会自动写这一条，不用额外跑。记录落在 `state/workspaces.jsonl`：
+
+```json
+{"ts":"...","project":"agent-autoloop","repo":"owner/repo","path":"d:\\github\\agent-autoloop","host":"DESKTOP-XXXX","os":"Windows"}
+```
+
+**进项目前先查，别问用户要路径**：
+
+```bash
+python scripts/prtool.py where --project <项目>
+```
+
+输出会标出本机可用 / 路径缺失 / remote 不符 / 别的机器，并直接给出「本机可用：<路径>」。本机没有可用副本时，它按记录里的 repo 给出 clone 命令。`repo` 从 `git remote get-url origin` 推导，所以 remote 换过的旧路径能被认出来。
+
 ## 四层结构
 
 | 层 | 位置 | 内容 | 变不变 |
@@ -83,6 +107,7 @@ skill 包里的 `_seed/` 是空模板，`init` 时拷到数据目录。**不要�
 | **第一次用、还没设置偏好** | `references/init.md` |
 | **检查 git 提交身份、noreply 邮箱** | `scripts/prtool.py whoami` |
 | **接手一个已有项目**（默认入口） | `projects/_index.md` → `conventions/<项目>.md` → 该项目 `candidates.md` |
+| **代码在哪 / 工作副本路径** | `scripts/prtool.py where --project <项目>` |
 | **新项目进场**（还没有 conventions） | `references/onboard-project.md` |
 | 选新项目、评估值不值得去 | `references/choose-project.md` |
 | 在某项目里找可提的 PR 候选 | `references/hunt-candidate.md` |
@@ -115,6 +140,7 @@ skill 包里的 `_seed/` 是空模板，`init` 时拷到数据目录。**不要�
 | 严重线的覆盖缺口清单 | `projects/<项目>/coverage.md`（按需创建） |
 | PR 事件流水（机器读，算合并率用） | `state/prs.jsonl` |
 | 扫描流水（查过什么、结论如何） | `state/scans.jsonl` |
+| 各项目在本机的 clone 路径（跨 agent / 跨机器） | `state/workspaces.jsonl` |
 | 你自己踩过的坑、待验证的猜想 | `lessons.md` |
 | 跨项目用户偏好（止损线、时限、目标方向） | `preferences.md` |
 
@@ -124,15 +150,16 @@ skill 包里的 `_seed/` 是空模板，`init` 时拷到数据目录。**不要�
 
 1. 读 `preferences.md`（没有就先做初始化）。
 2. 读 `projects/_index.md`，确定本次做哪个项目、做什么。
-3. **读该项目的 `conventions/<项目>.md`** —— 没有就先跑 `references/onboard-project.md`。
-4. 读该项目的 `candidates.md`、`excluded.md`、`issues.md`，**不要重走已排除的方向**。
-5. **按四档优先级决定这次做什么**（见下节）。
-6. 挖候选时按 `references/hunt-candidate.md`；每个候选按 `references/verify.md` 定性。
-7. 汇报候选与证据，等用户决定。
-8. 用户同意后按 `references/write-pr.md` + 该项目 conventions 开 PR。
-9. 回填：`candidates.md` 状态（带类型）、`state/scans.jsonl` 追加一条、`_index.md` 更新下一个动作；本轮踩到的坑按第 6 条硬规则归类。
-10. PR 有结果时：更新 `ledger.md`、`state/prs.jsonl`、`profile.md` 的维护者画像；每 5 个 PR 更新一次 `ledger.md` 的「类型复盘」表。
-11. 收尾跑一次 `python scripts/prtool.py check`，确认档案没写坏。
+3. **确认代码在哪**：`python scripts/prtool.py where --project <项目>`。有「本机可用」就直接用那个路径，不要问用户；没有就先 clone，再 `where --path` 记一条。
+4. **读该项目的 `conventions/<项目>.md`** —— 没有就先跑 `references/onboard-project.md`。
+5. 读该项目的 `candidates.md`、`excluded.md`、`issues.md`，**不要重走已排除的方向**。
+6. **按四档优先级决定这次做什么**（见下节）。
+7. 挖候选时按 `references/hunt-candidate.md`；每个候选按 `references/verify.md` 定性。
+8. 汇报候选与证据，等用户决定。
+9. 用户同意后按 `references/write-pr.md` + 该项目 conventions 开 PR。
+10. 回填：`candidates.md` 状态（带类型）、`state/scans.jsonl` 追加一条、`_index.md` 更新下一个动作；本轮踩到的坑按第 6 条硬规则归类。
+11. PR 有结果时：更新 `ledger.md`、`state/prs.jsonl`、`profile.md` 的维护者画像；每 5 个 PR 更新一次 `ledger.md` 的「类型复盘」表。
+12. 收尾跑一次 `python scripts/prtool.py check`，确认档案没写坏。
 
 ## 第五步：这次做什么（四档优先级）
 
@@ -173,7 +200,7 @@ skill 包里的 `_seed/` 是空模板，`init` 时拷到数据目录。**不要�
 
 ## 脚本
 
-**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），六个子命令齐全。
+**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），七个子命令齐全。
 
 ```bash
 # 建数据目录（只需一次；已存在的文件不覆盖）
@@ -188,8 +215,12 @@ python scripts/prtool.py issues --repo owner/repo
 # 追加一条事件到 JSONL 台账（相对路径按数据目录解析）
 python scripts/prtool.py append --file state/prs.jsonl --json '{"ts":"2026-11-27T02:10:00Z","project":"<项目>","pr":123,"status":"merged"}'
 
-# 进场采集（只做推导部分，输出可直接粘进 conventions）
+# 进场采集（只做推导部分，输出可直接粘进 conventions；同时记下工作副本路径）
 python scripts/prtool.py onboard --path <本地仓库路径>
+
+# 查某个项目的代码在本机哪个目录（跨 agent / 跨机器）；给了 --path 就是记录
+python scripts/prtool.py where --project <项目>
+python scripts/prtool.py where --project <项目> --path <本地仓库路径>
 
 # 自检：包完整性 + 数据档案健康度
 python scripts/prtool.py check
@@ -198,9 +229,9 @@ python scripts/prtool.py check
 python scripts/prtool.py whoami
 ```
 
-`append` / `check` / `init` 都接受 `--data <路径>`，用来临时指向别的数据目录。
+`append` / `check` / `init` / `onboard` / `where` 都接受 `--data <路径>`，用来临时指向别的数据目录。
 
-**没有 Python 时**用 `scripts/*.ps1`（Windows PowerShell 5.1），但**只有三个子命令**，`init` / `issues` / `check` / `whoami` 都没有对应实现：
+**没有 Python 时**用 `scripts/*.ps1`（Windows PowerShell 5.1），但**只有三个子命令**，`init` / `issues` / `check` / `whoami` / `where` 都没有对应实现：
 
 ```powershell
 .\scripts\pr-status.ps1 -Repo owner/repo -Author 你的用户名
@@ -213,6 +244,7 @@ python scripts/prtool.py whoami
 **`check` 手工核对清单**（没有 Python 时）：
 
 - `state/*.jsonl` 每行是否都是合法 JSON，且带 `ts` 和 `project`
+- `state/workspaces.jsonl` 里的 `path` 在本机是否还存在（不存在就重新记一条）
 - `projects/_index.md` 里每个项目是否有对应目录和 `conventions/<项目>.md`
 - 文档里 `` `references/` `` 开头的路径引用是否都存在
 - `projects/_index.md` 里有没有手写的合并数（应该用 `status` 现算）

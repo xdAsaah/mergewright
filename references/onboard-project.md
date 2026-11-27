@@ -15,7 +15,24 @@
 
 **只有项目级的问题才在这里问**（见第四节）。
 
-## 二、推导（读文件）
+## 二、代码在哪：先查，别问
+
+进任何仓库之前先查一遍，**不要直接问用户「仓库在哪个目录」**：
+
+```bash
+python scripts/prtool.py where --project <项目>
+```
+
+| 输出 | 做什么 |
+| --- | --- |
+| 有「本机可用：<路径>」 | 直接用这个路径，跳到第三节 |
+| 标「路径缺失」/「remote 不符」 | 代码搬过家或换了 remote，重新 clone 后用 `where --path` 记一条 |
+| 标「别的机器」 | 这台机器没有副本，按记录里的 repo clone 一份再记 |
+| 完全没有记录 | 问用户要路径，`onboard --path` 会自动记下来 |
+
+记录落在数据目录的 `state/workspaces.jsonl`，所有 agent 共用同一份。**同一个项目在不同 agent 里 clone 到不同目录、甚至不同机器，都能查到。**
+
+## 三、推导（读文件）
 
 按顺序跑，每项记进 `conventions/<项目>.md` 并标 `[推导]`。
 
@@ -95,7 +112,7 @@ Get-ChildItem -Directory | Where-Object { $_.Name -notmatch '^\.|node_modules' }
 
 结合 README 判断每个目录的职责和改动风险。
 
-## 三、观察（读最近的 PR）
+## 四、观察（读最近的 PR）
 
 用 `scripts/prtool.py status --repo <owner/repo>` 取数，然后：
 
@@ -131,7 +148,7 @@ python scripts/prtool.py status --repo <owner/repo> --author <维护者>
 
 把结果填进 `conventions/<项目>.md` 的 3.1 表，每条带证据和日期。
 
-## 四、只问项目级的这几个（最多 3 个）
+## 五、只问项目级的这几个（最多 3 个）
 
 推导和观察做完后，只问这些——**都是这个项目特有的，`preferences.md` 里没有**：
 
@@ -143,14 +160,15 @@ python scripts/prtool.py status --repo <owner/repo> --author <维护者>
 - 止损线、低价值 PR 提不提、目标方向 → 已在 `preferences.md`，直接读
 - commit 规范、测试命令、平台、PR 模板 → 都能从仓库读出来，列给他确认即可
 
-## 五、产出
+## 六、产出
 
 1. `conventions/<项目>.md`（按 `_TEMPLATE.md` 填，每条带来源和日期）
 2. `projects/<项目>/profile.md`（仓库地图、领域约定、维护者画像）
 3. `projects/_index.md` 加一行
-4. 告诉用户：**哪些是推导的、哪些是观察的、哪些是他定的**，让他能一眼看出哪些可能不准
+4. `state/workspaces.jsonl` 追加一条工作副本记录（`onboard --path` 自动写，除非加了 `--no-record`）
+5. 告诉用户：**哪些是推导的、哪些是观察的、哪些是他定的**，让他能一眼看出哪些可能不准
 
-## 六、规则过期怎么办
+## 七、规则过期怎么办
 
 - 每条带日期；超过 90 天的 `[观察]` 项，下次用之前先重新看一眼
 - 用户说「维护者变了」/「项目改规矩了」→ 立刻更新，并在变更记录里写明依据

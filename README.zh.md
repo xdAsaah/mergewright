@@ -101,6 +101,24 @@ PR_MERGED_HOME=/path/to/archive python scripts/prtool.py check
 
 包里的 `_seed/` 是空模板，`init` 从这里拷。**不要直接改 `_seed/` 里的文件**——那是模板。
 
+### 代码在哪
+
+共用的记录回答了「做过什么」，但没回答「**代码在哪**」。同一个项目在不同 agent 里可能 clone 在不同盘、不同目录，甚至不同机器上。
+
+每个项目第一次进场时记下工作副本：
+
+```bash
+python scripts/prtool.py where --project <项目> --path <本地仓库路径>
+```
+
+`onboard --path` 会自动写这一条。记录落在 `state/workspaces.jsonl`，带 repo、路径、主机名和系统。**进项目前先查，别问用户要路径**：
+
+```bash
+python scripts/prtool.py where --project <项目>
+```
+
+它会标出每份副本是本机可用 / 路径缺失 / remote 不符 / 别的机器，并直接给出该用的路径。本机没有可用副本时，按记录里的 repo 给出 clone 命令。
+
 ## 首次使用
 
 装好后直接说「我要提开源 PR」或「看看这个仓库能提什么」，skill 会自动触发。
@@ -127,6 +145,7 @@ python scripts/prtool.py whoami
 python scripts/prtool.py status  --repo owner/repo --author 你的用户名
 python scripts/prtool.py issues  --repo owner/repo
 python scripts/prtool.py onboard --path <本地仓库>
+python scripts/prtool.py where   --project <项目> [--path <本地仓库>]
 python scripts/prtool.py append  --file state/prs.jsonl --json '{...}'
 python scripts/prtool.py check
 python scripts/prtool.py whoami
@@ -136,14 +155,15 @@ python scripts/prtool.py whoami
 | --- | --- |
 | `status` | 现算合并率、open 积压、通道活性，按 PR 类型分组统计；支持 GitHub / GitLab |
 | `issues` | 扫 open issue，标新手友好 / 欢迎 PR / 长期未修 / 已认领 / 已有 PR 在审 / 已修待确认 / 有相关 PR / 多 PR 未合 |
-| `onboard` | 读本地仓库，推导出 commit 规范、测试命令、PR 模板等 |
+| `onboard` | 读本地仓库，推导出 commit 规范、测试命令、PR 模板等；同时记下工作副本路径 |
+| `where` | 查/记某个项目的代码在本机哪个目录；标出路径缺失、remote 不符、别的机器 |
 | `append` | 往 JSONL 台账追加一条事件 |
 | `check` | 自检档案：死链、目录缺失、坏 JSON、必备节、手写数字 |
 | `whoami` | 检查提交身份，覆盖未装 git / 未登录 / 真实邮箱等场景 |
 
 只依赖 Python 3.8+ 标准库，无第三方包。凭据从 `git credential` 取，不落盘、不回显。
 
-`scripts/*.ps1` 是 Windows PowerShell 的等价实现，但只覆盖 `status` / `onboard` / `append` 三个子命令，**没有 `issues`、`check`、`whoami`**。
+`scripts/*.ps1` 是 Windows PowerShell 的等价实现，但只覆盖 `status` / `onboard` / `append` 三个子命令，**没有 `issues`、`check`、`whoami`、`where`**。
 
 ## 硬规则
 
@@ -228,20 +248,20 @@ pr-merged/                ← skill 包（只读，每个 agent 一份）
 │   ├── follow-up.md      跟进：review 风格 + 止损
 │   ├── severe-scan.md    严重 bug：不变量 + 攻击面矩阵
 │   └── first-pr.md       首 PR 与阶段策略
-├── scripts/              6 个 Python 子命令 + 3 个 PowerShell 等价实现
+├── scripts/              7 个 Python 子命令 + 3 个 PowerShell 等价实现
 └── _seed/                空模板，由 init 拷到数据目录
     ├── preferences.md
     ├── lessons.md
     ├── conventions/_TEMPLATE.md
     ├── projects/_index.md + _template/（profile/ledger/candidates/excluded/issues）
-    └── state/prs.jsonl + scans.jsonl
+    └── state/prs.jsonl + scans.jsonl + workspaces.jsonl
 
 ~/.pr-merged/             ← 你的数据（所有 agent 共用）
 ├── preferences.md
 ├── lessons.md
 ├── conventions/<项目>.md
 ├── projects/_index.md + <项目>/
-└── state/*.jsonl
+└── state/*.jsonl         prs / scans / workspaces
 ```
 
 ## 关于 `_seed/`

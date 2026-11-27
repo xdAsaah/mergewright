@@ -101,6 +101,24 @@ PR_MERGED_HOME=/path/to/archive python scripts/prtool.py check
 
 The package's `_seed/` holds the blank templates. Do not edit files there — they are what `init` copies from.
 
+### Where the code is
+
+Shared records answer "what did I do". They do not answer "**where is the checkout**". The same project can live at different paths in different agents, on different drives, or on different machines.
+
+Every project records its working copy on first entry:
+
+```bash
+python scripts/prtool.py where --project <project> --path <local-repo>
+```
+
+`onboard --path` writes this automatically. The record lands in `state/workspaces.jsonl` and carries the repo, path, hostname, and OS. Before entering a project, look it up instead of asking the user:
+
+```bash
+python scripts/prtool.py where --project <project>
+```
+
+It reports each copy as usable / path missing / remote mismatch / other machine, and prints the path to use. If nothing is usable on this machine, it prints the clone command based on the recorded repo.
+
 ## First run
 
 After installing, just say "I want to contribute a PR to an open-source project" or "what can I contribute to this repo", and the skill triggers automatically.
@@ -128,6 +146,7 @@ python scripts/prtool.py init
 python scripts/prtool.py status  --repo owner/repo --author your-username
 python scripts/prtool.py issues  --repo owner/repo
 python scripts/prtool.py onboard --path <local-repo>
+python scripts/prtool.py where   --project <project> [--path <local-repo>]
 python scripts/prtool.py append  --file state/prs.jsonl --json '{...}'
 python scripts/prtool.py check
 python scripts/prtool.py whoami
@@ -138,16 +157,17 @@ python scripts/prtool.py whoami
 | `init` | Creates the data directory from `_seed/`; never overwrites existing files |
 | `status` | Computes merge rate, open backlog, and channel activity live; groups your PRs by type; supports GitHub and GitLab |
 | `issues` | Scans open issues and flags: beginner-friendly / PR welcome / long unfixed / assigned / open PR exists / merged but unclosed / related PR / multiple failed PRs |
-| `onboard` | Reads a local repo and derives commit convention, test commands, PR template, and more |
+| `onboard` | Reads a local repo and derives commit convention, test commands, PR template, and more; records the checkout path |
+| `where` | Looks up or records where a project's checkout lives on each machine; flags missing paths and remote mismatches |
 | `append` | Appends one event to a JSONL ledger (relative paths resolve against the data directory) |
 | `check` | Self-checks both the package and the data archive |
 | `whoami` | Checks commit identity, covering missing git / not logged in / real email |
 
-`init`, `append`, and `check` accept `--data <path>` to point at a different archive.
+`init`, `append`, `check`, `onboard`, and `where` accept `--data <path>` to point at a different archive.
 
 Only the Python 3.8+ standard library, no third-party packages. Credentials come from `git credential`; never written to disk, never echoed.
 
-`scripts/*.ps1` are Windows PowerShell equivalents, but they cover only `status` / `onboard` / `append`. **They do not include `issues`, `check`, or `whoami`.**
+`scripts/*.ps1` are Windows PowerShell equivalents, but they cover only `status` / `onboard` / `append`. **They do not include `issues`, `check`, `whoami`, or `where`.**
 
 ## Hard rules
 
@@ -232,20 +252,20 @@ pr-merged/                ← skill package (read-only, one per agent)
 │   ├── follow-up.md      Following up: review styles + stop-loss
 │   ├── severe-scan.md    Severe bugs: invariants + attack-surface matrix
 │   └── first-pr.md       First PR and stage strategy
-├── scripts/              6 Python subcommands + 3 PowerShell equivalents
+├── scripts/              7 Python subcommands + 3 PowerShell equivalents
 └── _seed/                Blank templates, copied by `init`
     ├── preferences.md
     ├── lessons.md
     ├── conventions/_TEMPLATE.md
     ├── projects/_index.md + _template/ (profile/ledger/candidates/excluded/issues)
-    └── state/prs.jsonl + scans.jsonl
+    └── state/prs.jsonl + scans.jsonl + workspaces.jsonl
 
 ~/.pr-merged/             ← your data (shared by every agent)
 ├── preferences.md
 ├── lessons.md
 ├── conventions/<project>.md
 ├── projects/_index.md + <project>/
-└── state/*.jsonl
+└── state/*.jsonl         prs / scans / workspaces
 ```
 
 ## About `_seed/`

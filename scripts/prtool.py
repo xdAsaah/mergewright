@@ -13,7 +13,9 @@
 import argparse
 import json
 import os
+import platform
 import re
+import socket
 import subprocess
 import sys
 import urllib.error
@@ -129,6 +131,161 @@ def data_file(rel, explicit=""):
 
 def seed_dir():
     return os.path.join(PACKAGE_ROOT, "_seed")
+
+
+# ---------------------------------------------------------------- 工作副本
+
+def host_tag():
+    try:
+        return socket.gethostname() or "unknown"
+    except OSError:
+        return "unknown"
+
+
+def os_tag():
+    return platform.system() or "unknown"
+
+
+def norm_repo(value):
+    """把 remote url 或 owner/repo 归一成小写的 owner/repo。"""
+    s = (value or "").strip()
+    if not s:
+        return ""
+    has_host = False
+    m = re.match(r"^(https?://|ssh://|git://|git@)", s)
+    if m:
+        s = s[m.end():]
+        has_host = True
+        s = s.replace(":", "/", 1)      # git@host:owner/repo 的冒号
+    s = re.sub(r"\.git$", "", s)
+    parts = [p for p in s.strip("/").split("/") if p]
+    if has_host:
+        parts = parts[1:]               # 去掉 host（含 ssh 的端口段）
+    return "/".join(parts[-2:]).lower()
+
+
+def git_remote_repo(path):
+    return norm_repo(run(["git", "-C", path, "remote", "get-url", "origin"]).strip())
+
+
+def read_workspaces(data):
+    """读 state/workspaces.jsonl，同 (project, host, path) 只保留最后一条。"""
+    path = os.path.join(data, "state", "workspaces.jsonl")
+    latest = {}
+    if not os.path.isfile(path):
+        return []
+    with open(path, encoding="utf-8-sig", errors="replace") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            key = (obj.get("project", ""), obj.get("host", ""), obj.get("path", ""))
+            latest[key] = obj
+    rows = list(latest.values())
+    rows.sort(key=lambda r: (r.get("project", ""), r.get("host", ""), r.get("path", "")))
+    return rows
+
+
+def record_workspace(project, path, data, repo=""):
+    """把本地工作副本路径写进 state/workspaces.jsonl，同 (项目, 机器, 路径) 覆盖旧记录。"""
+    full = os.path.abspath(os.path.expanduser(path))
+    rec = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "project": project,
+        "repo": repo or git_remote_repo(full),
+        "path": full,
+        "host": host_tag(),
+        "os": os_tag(),
+    }
+    target = os.path.join(data, "state", "workspaces.jsonl")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+
+    kept = []
+    if os.path.isfile(target):
+        with open(target, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                same = (obj.get("project"), obj.get("host"), obj.get("path"))
+                if same != (rec["project"], rec["host"], rec["path"]):
+                    kept.append(obj)
+    kept.append(rec)
+    kept.sort(key=lambda r: (r.get("project", ""), r.get("host", ""), r.get("path", "")))
+
+    with open(target, "w", encoding="utf-8", newline="\n") as f:
+        for obj in kept:
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    return rec
+
+
+def cmd_where(args):
+    """查/记某个项目在哪些机器上、哪个目录做过。"""
+    data = data_root(args.data)
+    this_host = host_tag()
+
+    if args.path:
+        path = os.path.abspath(os.path.expanduser(args.path))
+        if not os.path.isdir(path):
+            print(f"路径不存在：{path}", file=sys.stderr)
+            return 1
+        project = args.project or os.path.basename(path.rstrip("\\/"))
+        rec = record_workspace(project, path, data, args.repo)
+        print(f"已记录工作副本 -> {os.path.join(data, 'state', 'workspaces.jsonl')}")
+        print(f"  {rec['project']}  {rec['path']}  ({rec['host']} / {rec['os']})")
+        return 0
+
+    rows = read_workspaces(data)
+    if args.project:
+        rows = [r for r in rows if r.get("project", "").lower() == args.project.lower()]
+    if args.repo:
+        want = norm_repo(args.repo)
+        rows = [r for r in rows if norm_repo(r.get("repo", "")) == want]
+    if not rows:
+        if args.project or args.repo:
+            print("没有记录。这个项目还没在任何一个 agent 里跑过 onboard，")
+            print("或者记录是在旧版本写的。跑一次：")
+            print("  python scripts/prtool.py onboard --path <本地仓库>")
+        else:
+            print("还没有任何工作副本记录。")
+            print("进项目时跑 onboard --path，会自动记下路径。")
+        return 0
+
+    print(f"{'项目':<18} {'本机':<8} {'主机':<16} 路径")
+    for r in rows:
+        p = r.get("path", "")
+        exists = os.path.isdir(p)
+        if not exists:
+            mark = "别的机器" if r.get("host") != this_host else "缺失"
+        else:
+            cur = git_remote_repo(p)
+            want = norm_repo(r.get("repo", ""))
+            mark = "remote不符" if cur and want and cur != want else "可用"
+        print(f"{r.get('project',''):<18} {mark:<8} {r.get('host',''):<16} {p}")
+
+    print()
+    usable = [r for r in rows if os.path.isdir(r.get("path", ""))]
+    if args.project and usable:
+        print(f"本机可用：{usable[0]['path']}")
+        print("直接用这个路径，不要再问用户要仓库位置。")
+    elif not usable:
+        print("本机没有可用的工作副本。先 clone 一份，再跑：")
+        repo = rows[0].get("repo", "") or "<owner/repo>"
+        print(f"  git clone https://github.com/{repo}.git <你要放的目录>")
+        print(f"  python scripts/prtool.py where --project {rows[0].get('project', '<项目>')} --path <你要放的目录>")
+    else:
+        print("加 --project <项目> 只看一个，直接给出该用的路径。")
+    return 0
 
 
 # ---------------------------------------------------------------- init
@@ -749,6 +906,20 @@ def cmd_onboard(args):
     print("- **领域约定**：写代码前必读的几条 → 读 README / AGENTS / 核心模块注释")
     print("- **不变量**：只有做严重线才需要 → 见 `references/severe-scan.md` 第一节")
     print("- **用户偏好**：止损线、低价值 PR 提不提 → 问用户")
+
+    if not getattr(args, "no_record", False):
+        project = getattr(args, "project", "") or os.path.basename(root.rstrip("\\/"))
+        rec = record_workspace(project, root, data_root(getattr(args, "data", "")),
+                               git_remote_repo(root))
+        print()
+        print("## 5. 工作副本已记录")
+        print()
+        print(f"| 项目 | 路径 | 机器 |")
+        print("| --- | --- | --- |")
+        print(f"| {rec['project']} | `{rec['path']}` | {rec['host']} / {rec['os']} |")
+        print()
+        print("写进了数据目录的 `state/workspaces.jsonl`。别的 agent 进来时跑")
+        print("`prtool.py where --project <项目>` 就能直接拿到这个路径，不用再问用户。")
     return 0
 
 
@@ -756,7 +927,7 @@ def cmd_onboard(args):
 
 def cmd_append(args):
     raw = args.json if args.json else sys.stdin.read()
-    raw = (raw or "").strip()
+    raw = (raw or "").lstrip("\ufeff").strip()
     if not raw:
         print("没有内容可追加", file=sys.stderr)
         return 1
@@ -976,7 +1147,7 @@ def cmd_check(args):
         if not os.path.isfile(path):
             add("err", f"state/{name}", "文件不存在")
             continue
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8-sig") as f:
             for i, line in enumerate(f, 1):
                 if not line.strip():
                     continue
@@ -991,6 +1162,31 @@ def cmd_check(args):
                 for key in ("ts", "project"):
                     if key not in obj:
                         add("err", f"state/{name}:{i}", f"缺必填字段 {key}")
+
+    # 1b. 工作副本记录：格式校验 + 本机路径是否还在
+    ws_path = os.path.join(data, "state", "workspaces.jsonl")
+    if not os.path.isfile(ws_path):
+        add("warn", "state/workspaces.jsonl", "缺失，跑一次 init 补上（不影响已有记录）")
+    else:
+        this_host = host_tag()
+        for i, line in enumerate(open(ws_path, encoding="utf-8-sig", errors="replace"), 1):
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError as e:
+                add("err", f"state/workspaces.jsonl:{i}", f"不是合法 JSON（{e}）")
+                continue
+            if not isinstance(obj, dict):
+                add("err", f"state/workspaces.jsonl:{i}", "不是 JSON 对象")
+                continue
+            for key in ("ts", "project", "path"):
+                if key not in obj:
+                    add("err", f"state/workspaces.jsonl:{i}", f"缺必填字段 {key}")
+            p = obj.get("path", "")
+            if obj.get("host") == this_host and p and not os.path.isdir(p):
+                add("warn", f"state/workspaces.jsonl:{i}",
+                    f"本机路径已不存在：{p}（换位置后跑 where --path 重记）")
 
     # 2. _index.md 里的项目：目录、规则文件、conventions 是否存在
     #    只解析第一张表（「项目 | 状态 | 规则文件 | 下一个动作 | 最后更新」），
@@ -1119,7 +1315,17 @@ def main(argv=None):
 
     o = sub.add_parser("onboard", help="读本地仓库，推导 conventions 能自动填的项")
     o.add_argument("--path", required=True)
+    o.add_argument("--project", default="", help="项目名，默认取目录名")
+    o.add_argument("--no-record", action="store_true", help="只采集，不写工作副本记录")
+    o.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
     o.set_defaults(func=cmd_onboard)
+
+    w2 = sub.add_parser("where", help="查/记某个项目的本地工作副本路径（跨 agent 共享）")
+    w2.add_argument("--project", default="", help="项目名，如 agent-autoloop")
+    w2.add_argument("--repo", default="", help="owner/repo，按仓库过滤或补全")
+    w2.add_argument("--path", default="", help="给了就记录这个路径，不给就只查询")
+    w2.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
+    w2.set_defaults(func=cmd_where)
 
     a = sub.add_parser("append", help="往 JSONL 台账追加一条记录")
     a.add_argument("--file", required=True, help="相对路径按数据目录解析，绝对路径原样用")

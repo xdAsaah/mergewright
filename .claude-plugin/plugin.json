@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "pr-merged",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Land your first merged PR — then keep landing them. A cross-session workbench that finds real candidates, proves the bug, and remembers every repo.",
   "author": {
     "name": "xdAsaah",
