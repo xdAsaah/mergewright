@@ -1,0 +1,13 @@
+# 统一行尾，避免跨平台 diff 噪音
+* text=auto eol=lf
+
+# Markdown 和 Python 用 LF
+*.md text eol=lf
+*.py text eol=lf
+*.jsonl text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# PowerShell 脚本保留 CRLF（Windows 习惯），但不要改动 BOM
+# 注意：.ps1 必须存为 UTF-8 带 BOM，BOM 是文件内容的一部分，git 不会动它
+*.ps1 text eol=crlf

@@ -1,0 +1,89 @@
+# 单项目内找候选
+
+> 触发：在已选定的项目里挖「下一个能提的 PR」。
+> 前提：先读该项目的 `excluded.md`，**不要重走已排除的方向**。
+
+## 一、六种扫描手法（按性价比排序）
+
+### 1. 导出函数 × 测试覆盖反查
+
+找出「导出了但测试里从未出现名字」的函数——零覆盖往往意味着某条分支没人守。
+
+```powershell
+# 收集所有导出名，与测试全文比对（路径按项目改）
+$exports = @{}
+Get-ChildItem <源码目录> -Filter *.ts -Recurse | ForEach-Object {
+  Select-String -Path $_.FullName -Pattern '^export (async )?function (\w+)|^export const (\w+)' -AllMatches |
+    ForEach-Object { foreach ($m in $_.Matches) { $n = if ($m.Groups[2].Value) { $m.Groups[2].Value } else { $m.Groups[3].Value }; if ($n) { $exports[$n] = $_.Path } } }
+}
+$tests = (Get-ChildItem <测试目录> -Recurse -Include *.test.ts,*.spec.ts | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n"
+$exports.Keys | Where-Object { $tests -notmatch [regex]::Escape($_) } | Sort-Object
+```
+
+Python / Go / Rust 同理：换成 `^def |^func [A-Z]|^pub fn` 之类的导出模式。
+
+**注意**：零覆盖 ≠ 该测。先判断这个函数的行为是否已被**间接**覆盖（通过上层调用），再决定。
+
+### 2. 文档承诺 × 测试反查
+
+`docs/`、`README`、`SECURITY.md` 里每一条「会做 X」「不会做 Y」都是承诺。逐条问「有测试守它吗」。
+
+> 案例：某个项目在文档里承诺「`.ps1` 走 PowerShell、`.bat` 拒绝、`.cmd` 只在命名出可运行入口时接」，三条全无测试——补上就是一条纯测试 PR。
+
+### 3. 截断点扫描
+
+```powershell
+Select-String -Path <源码目录>\*.<ext> -Pattern '\.slice\(0,\s*\w+\)|substring\(0,|padEnd\(|\.slice\(-' 
+```
+
+按码点切分是安全的；按字节切会切开多字节字符（UTF-16 代理对、UTF-8 多字节）。这类 bug 通常维护者已修过很多次，**重点看新代码**。
+
+### 4. 同族漏项扫描
+
+找到一处「A 处做了 X 防护，B 处没做」后，**全库搜一遍同类**，别只修撞到的那一处。
+
+> 案例（匿名）：某个项目里修「子进程不弹控制台窗口」，只找到一处漏项就提了 PR，维护者合并时补了另外两处。**同一类漏项要一次搜完，否则显得没做功课。**
+
+### 5. 平台差异扫描
+
+维护者通常只在自己的开发平台上跑。你换个平台就可能撞到：
+
+| 平台 | 常见盲区 |
+| --- | --- |
+| Windows | 子进程隐藏窗口、路径分隔符与引号、`.cmd`/`.ps1` shim、控制台代码页、文件锁、符号链接权限、ACL |
+| macOS | `launchctl`、app bundle 路径、`~` 展开、Gatekeeper |
+| Linux | `DISPLAY`/`WAYLAND_DISPLAY`、`notify-send`、权限位 |
+
+**这类是维护者盲区，即使产品行为零变化也值得提**（但一个项目最多一条，见 `preferences.md`）。
+
+### 6. 状态组合矩阵
+
+把「入口 × 身份 × 状态」列成表，逐格问「换个人来、换个状态，还能不能做」。入口和身份按项目改。
+
+| | 管理员 | 执行者 | 通道 | 数据源 | 公开链接 |
+| --- | --- | --- | --- | --- | --- |
+| 排队中 | | | | | |
+| 执行中 | | | | | |
+| 状态未知 | | | | | |
+| 待决事项 | | | | | |
+| 已决事项 | | | | | |
+| 凭证过期 | | | | | |
+
+## 二、每个候选必须回答四个问题
+
+1. **谁会碰到？** 真实用户场景，还是只有测试能触发？
+2. **后果是什么？** 丢数据/误操作/误合并（严重），还是慢/文案不准（轻）？
+3. **证据是什么？** 见 `verify.md` 的三级证据。
+4. **有没有别的层挡住了？** 挡住了只算加固建议，不算 bug。
+
+## 三、记录
+
+每扫完一轮，往 `state/scans.jsonl` 追加一条：
+
+```json
+{"ts":"2026-11-27T02:00:00Z","project":"<项目>","scope":"<扫了什么>","head":"<提交号>","verdict":"none","severity":null,"evidence":"<结论与依据>","next":"<下一步>"}
+```
+
+`verdict` 取值：`confirmed` / `needs_validation` / `rejected` / `none`。
+
+候选本身写进 `projects/<项目>/candidates.md` 的「待验证」档，**筛掉的移到 `excluded.md`**，不要删。
