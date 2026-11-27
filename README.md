@@ -150,6 +150,7 @@ python scripts/prtool.py issues  --repo owner/repo
 python scripts/prtool.py pr      https://github.com/owner/repo/pull/12
 python scripts/prtool.py api     /repos/owner/repo/pulls/12/comments
 python scripts/prtool.py closed  --repo owner/repo [--only unmerged] [--reasons] [--with-merger]
+python scripts/prtool.py gates   --project <project> [--run] [--base origin/main]
 python scripts/prtool.py onboard --path <local-repo>
 python scripts/prtool.py where   --project <project> [--path <local-repo>]
 python scripts/prtool.py append  --file state/prs.jsonl --json '{...}'
@@ -164,6 +165,7 @@ python scripts/prtool.py whoami
 | `issues` | Scans open issues and flags: beginner-friendly / PR welcome / long unfixed / assigned / open PR exists / merged but unclosed / related PR / multiple failed PRs |
 | `pr` | Fetches one PR in a single GraphQL request: body, conversation comments, reviews, inline review threads, changed files |
 | `closed` | Lists closed PRs: merged or not, timestamps, optional merger and close reason |
+| `gates` | Reads the "CI gates" table in `conventions` §2 and lists or `--run`s it, reporting pass/fail/skip |
 | `api` | Authenticated generic GET, for data the other subcommands do not expose; never hand-roll anonymous requests |
 | `onboard` | Reads a local repo and derives commit convention, test commands, PR template, and more; records the checkout path |
 | `where` | Looks up or records where a project's checkout lives on each machine; flags missing paths and remote mismatches |
@@ -266,7 +268,7 @@ mergewright/              ← skill package (read-only, one per agent)
 │   ├── follow-up.md      Following up: review styles + stop-loss
 │   ├── severe-scan.md    Severe bugs: invariants + attack-surface matrix
 │   └── first-pr.md       First PR and stage strategy
-├── scripts/              11 Python subcommands + 3 PowerShell equivalents
+├── scripts/              12 Python subcommands + 3 PowerShell equivalents
 └── _seed/                Blank templates, copied by `init`
     ├── preferences.md
     ├── lessons.md

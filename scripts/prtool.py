@@ -15,6 +15,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -1295,6 +1296,207 @@ def workflow_ci_rows(root, max_rows=40):
     return rows[:max_rows]
 
 
+# ---------------------------------------------------------------- CI 门禁
+
+GATE_HEADING_RE = re.compile(r"^#{2,3}\s*CI 门禁(?:[（(][^）)]*[）)])?\s*$")
+BASE_PLACEHOLDERS = (
+    '"$GUARD_BASE_REV"', "'$GUARD_BASE_REV'", "$GUARD_BASE_REV", "${GUARD_BASE_REV}",
+    '"${{ inputs.base-rev }}"', "${{ inputs.base-rev }}", "${{ inputs.base-rev }}",
+)
+CMD_PREFIXES = ("uv ", "python ", "python3 ", "make ", "npm ", "pnpm ", "npx ", "bash ", "sh ",
+                "go ", "cargo ", "pytest", "pyrefly ", "ruff ", "git ", "./", "../", "scripts/", "dev/")
+CMD_SOLO = {"pytest", "make", "npm", "pnpm", "uv", "ruff", "mypy", "tox", "cargo", "go"}
+
+
+def looks_like_command(s):
+    s = (s or "").strip()
+    if not s or s.startswith("-"):
+        return False
+    return " " in s or s in CMD_SOLO or s.startswith(CMD_PREFIXES)
+
+
+def gate_section(text):
+    """取 conventions 里「CI 门禁」小节的正文行；没有该小节返回 None。"""
+    lines = text.splitlines()
+    start = None
+    for i, ln in enumerate(lines):
+        if GATE_HEADING_RE.match(ln.strip()):
+            start = i
+            break
+    if start is None:
+        return None
+    out = []
+    for ln in lines[start + 1:]:
+        if re.match(r"^#{1,6}\s", ln):
+            break
+        out.append(ln)
+    return out
+
+
+def parse_gate_rows(text):
+    """解析「CI 门禁」表，返回 [(cmd, local_ok, job, step)]；没有小节返回 None。"""
+    sec = gate_section(text)
+    if sec is None:
+        return None
+    rows = []
+    header_skipped = False
+    for ln in sec:
+        s = ln.strip()
+        if not s.startswith("|"):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if not cells or all(set(c) <= set("-: ") for c in cells):
+            continue
+        if not header_skipped:
+            header_skipped = True  # 表头
+            continue
+        joined = " | ".join(cells)
+        spans = re.findall(r"`([^`]+)`", joined)
+        cmd = next((s for s in spans if looks_like_command(s)), "")
+        if not cmd:
+            continue  # 这一行没有可执行的完整命令（例如只列了脚本名和参数）
+        cmd = cmd.strip()
+        local = cells[3] if len(cells) >= 4 and cells[3] else "是"
+        rows.append((cmd, local, cells[0] if cells else "-", cells[1] if len(cells) > 1 else "-"))
+    return rows
+
+
+def apply_base(cmd, base):
+    out = cmd
+    for ph in BASE_PLACEHOLDERS:
+        out = out.replace(ph, base)
+    return out
+
+
+def first_token(cmd):
+    toks = cmd.strip().split()
+    for t in toks:
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", t):  # 跳过 VAR=x 前缀
+            continue
+        return t
+    return ""
+
+
+def workspace_for(project, data, override=""):
+    """本机该项目的 clone 路径（工作副本记录里找）。"""
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
+    this_host = host_tag()
+    rows = [r for r in read_workspaces(data) if r.get("project", "").lower() == project.lower()]
+    for r in rows:
+        if r.get("host") == this_host and os.path.isdir(r.get("path", "")):
+            return r["path"]
+    for r in rows:
+        if os.path.isdir(r.get("path", "")):
+            return r["path"]
+    return ""
+
+
+def pick_shell():
+    """选一个能跑原生命令的解释器。
+
+    Windows 上 `bash` 常指向 WSL，里面的 PATH 跟 Windows 不一样（`uv` / `python` 都没有），
+    所以默认用 PowerShell；只有找到 Git Bash 时才用 bash（dify 那种 `./dev/xxx-check-local`
+    才跑得起来）。
+    """
+    if os.name == "nt":
+        git = shutil.which("git")
+        if git:
+            cand = os.path.join(os.path.dirname(os.path.dirname(git)), "bin", "bash.exe")
+            if os.path.isfile(cand):
+                return [cand, "-lc"]
+        ps = shutil.which("powershell") or shutil.which("pwsh")
+        if ps:
+            return [ps, "-NoProfile", "-Command"]
+        return ["cmd", "/c"]
+    bash = shutil.which("bash")
+    return [bash, "-lc"] if bash else ["sh", "-c"]
+
+
+def cmd_gates(args):
+    """打印 / 执行 conventions §2「CI 门禁」表里的本地命令。
+
+    不加 --run 只列清单；加 --run 逐条执行并汇总 pass/fail/skip。
+    """
+    data = data_root(args.data)
+    project = args.project
+    conv = os.path.join(data, "conventions", project + ".md")
+    if not os.path.isfile(conv):
+        print(f"没有 conventions/{project}.md：先跑 python scripts/prtool.py onboard --path <本地仓库>",
+              file=sys.stderr)
+        return 1
+    with open(conv, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    rows = parse_gate_rows(text)
+    if rows is None:
+        print(f"conventions/{project}.md 里没有「CI 门禁」小节。\n"
+              "需要四列表：| 工作流/job | 步骤 | run 命令 | 本地可跑 |（见 conventions/_TEMPLATE.md）；\n"
+              "跑一次 python scripts/prtool.py onboard --path <本地仓库> 拿到表，再粘进来。", file=sys.stderr)
+        return 1
+    if not rows:
+        print(f"conventions/{project}.md 的「CI 门禁」小节里没有可执行命令：\n"
+              "命令要写完整（如 `uv run --project api python scripts/x.py --base-rev $GUARD_BASE_REV`），"
+              "只列脚本名不算。", file=sys.stderr)
+        return 1
+
+    base = args.base or "origin/main"
+    entries = []
+    for cmd, local, job, step in rows:
+        if args.only and not re.search(args.only, cmd):
+            continue
+        entries.append({"cmd": apply_base(cmd, base), "raw": cmd, "local": local, "job": job, "step": step})
+    if not entries:
+        print("过滤后没有可跑的条目。")
+        return 0
+
+    print(f"=== {project} 的 CI 门禁（基线 {base}，共 {len(entries)} 条）===")
+    for e in entries:
+        mark = "" if "否" not in e["local"] else "  [本地不可跑]"
+        print(f"  - {e['cmd']}{mark}")
+    if not args.run:
+        print("\n加 --run 逐条执行。")
+        return 0
+
+    repo = workspace_for(project, data, args.path)
+    if not repo or not os.path.isdir(repo):
+        print(f"找不到 {project} 的本机工作副本：先跑 where --project {project} --path <目录>", file=sys.stderr)
+        return 1
+    bash = pick_shell()
+    shell = bash
+
+    env = dict(os.environ, GUARD_BASE_REV=base)
+    failures, skips = [], []
+    print(f"\n工作目录：{repo}    解释器：{' '.join(shell)}")
+    for e in entries:
+        if "否" in e["local"]:
+            skips.append((e, "标记为本地不可跑"))
+            print(f"  SKIP  {e['cmd']}（标记为本地不可跑）")
+            continue
+        tok = first_token(e["cmd"])
+        if tok and not tok.startswith(("./", "../", "scripts/", "dev/")) and not shutil.which(tok):
+            skips.append((e, f"本机没有 {tok}"))
+            print(f"  SKIP  {e['cmd']}（本机没有 {tok}）")
+            continue
+        try:
+            p = subprocess.run(shell + [e["cmd"]], cwd=repo, env=env, capture_output=True,
+                               text=True, encoding="utf-8", errors="replace", timeout=args.timeout)
+            ok = p.returncode == 0
+            tail = ((p.stdout or "") + (p.stderr or "")).strip().splitlines()[-3:]
+            print(f"  {'PASS' if ok else 'FAIL'}  {e['cmd']}")
+            if not ok:
+                failures.append(e)
+                for ln in tail:
+                    print(f"        {ln}")
+        except subprocess.TimeoutExpired:
+            failures.append(e)
+            print(f"  FAIL  {e['cmd']}（超过 {args.timeout}s）")
+    print(f"\n汇总：{len(entries) - len(failures) - len(skips)} pass / {len(failures)} fail / {len(skips)} skip")
+    if failures:
+        print("有门禁没过，先修再推。")
+        return 1
+    return 0
+
+
 # ---------------------------------------------------------------- onboard
 
 def cmd_onboard(args):
@@ -1872,6 +2074,17 @@ def cmd_check(args):
                     add("warn", f"conventions/{fn}", f"缺必备节「{sec}」")
             if "[推导]" not in text and "[观察]" not in text and "[用户定]" not in text:
                 add("warn", f"conventions/{fn}", "没有任何来源标记（[推导]/[观察]/[用户定]）")
+            # CI 门禁表：缺小节只提醒（老档案先能用），小节存在但一条命令都没有算错，
+            # 因为那意味着「有表不抄命令」，正是漏跑守卫的形态。
+            gate_rows = parse_gate_rows(text)
+            if gate_rows is None:
+                add("warn", f"conventions/{fn}",
+                    "缺「CI 门禁」小节（四列表：工作流/job | 步骤 | run 命令 | 本地可跑）；"
+                    "跑 onboard 补，prtool.py gates --run 会拒绝执行")
+            elif not gate_rows:
+                add("err", f"conventions/{fn}",
+                    "「CI 门禁」小节里没有可执行命令：命令要写完整（含脚本名和参数），"
+                    "只列脚本名不算")
 
     # 4b. coverage.md：判「无守护」的行必须留下证据（见 references/verify.md 第八节）
     #     负向断言最容易翻车：只看了被截断的检索结果就断言「没有测试」，
@@ -2017,6 +2230,16 @@ def main(argv=None):
     cl.add_argument("--reasons-limit", type=int, default=20, help="--reasons 最多查几条，默认 20")
     cl.add_argument("--reason-chars", type=int, default=200, help="理由截断长度，默认 200")
     cl.set_defaults(func=cmd_closed)
+
+    gt = sub.add_parser("gates", help="列 / 跑 conventions 里「CI 门禁」的本地命令")
+    gt.add_argument("--project", required=True, help="项目名，如 dify")
+    gt.add_argument("--base", default="", help="替换 --base-rev 的基线，默认 origin/main")
+    gt.add_argument("--run", action="store_true", help="逐条执行（不加只列清单）")
+    gt.add_argument("--only", default="", help="只跑匹配这个正则的命令")
+    gt.add_argument("--timeout", type=int, default=600, help="单条命令超时秒数，默认 600")
+    gt.add_argument("--path", default="", help="工作副本路径，默认查 state/workspaces.jsonl")
+    gt.add_argument("--data", default="", help="数据目录，默认 ~/.mergewright")
+    gt.set_defaults(func=cmd_gates)
 
     args = ap.parse_args(argv)
     try:

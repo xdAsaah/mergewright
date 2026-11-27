@@ -139,4 +139,8 @@ Copy-Item tmp\orig.bak <实现文件> -Force
 
 **证据只认索引映射 + 官方文档，mock 不算。** mock 只能证明「你传了什么形状」，不能证明「后端怎么解释它」。真集群跑不了时，PR 正文必须写成「单测证明请求形状；语义未验证，等 e2e」——写成「已验证」就是过度声明。
 
+**测试约定（机械可查的那一半）**：跨后端过滤 / 查询的用例必须用**真实格式的 id**（连字符 UUID、带分隔符的键、带大小写的编码），不能用 `d-1` / `a` / `doc-1` 这类单一 token 的假值——单一 token 在 analyzer 面前是恒真的，拆不拆 token 都命中，等于没测。至少要有「真实格式 id → 命中」和「另一个真实格式 id → 不命中」两条。
+
+**写进证据的位置**：`candidates.md` 的「待提」档，跨后端查询类候选的证据摘要必须含三行——① 字段怎么建的（analyzer / keyword / dynamic）② 查询是否分析 ③ 值里的分隔符拆 token 后会不会 0 命中。缺一行不许升到待提。
+
 > 真实案例（2026-11-27，dify vdb-couchbase #47401）：照 ES 家族的 `term` 形状写了 `TermQuery`，但 Couchbase 索引 `default_analyzer: standard` + `metadata.dynamic: true`，连字符 UUID 被拆成 5 个 token，整串 term 在真集群 0 命中；mock 断言全绿。dosubot 指出后改成 analyzed 的 `match` + `and` 算子。**那份索引 JSON 就在同一个文件里，读过却没和「term 不分析」连起来。**

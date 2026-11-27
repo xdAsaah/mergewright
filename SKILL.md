@@ -143,6 +143,7 @@ python scripts/prtool.py where --project <项目>
 | **扫某项目 open issue** | `scripts/prtool.py issues --repo owner/repo` |
 | **读某个 PR 的详情 / 评论 / review / 行内意见** | `scripts/prtool.py pr <PR 链接或 owner/repo#12>`（1 次请求拿全） |
 | **查某仓库的关闭 / 合并明细（谁合的、为何被拒）** | `scripts/prtool.py closed --repo owner/repo`（基础 1 次请求） |
+| **推送前跑该仓 CI 门禁** | `scripts/prtool.py gates --project <项目> --run`（读 `conventions` §2 的表，逐条执行；不加 `--run` 只列清单） |
 | **取表里没有的 GitHub API 数据** | `scripts/prtool.py api /repos/...`（带 token；禁止手搓匿名请求） |
 | 查某项目当前 PR 状态与合并率 | `scripts/prtool.py status`（或 `scripts/pr-status.ps1`） |
 | **踩到一个坑，判断该记在哪** | `lessons.md` 第一节（判据）+ 第三节（贡献教训）/ 第四节（工具障碍） |
@@ -230,7 +231,7 @@ python scripts/prtool.py where --project <项目>
 
 ## 脚本
 
-**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），十一个子命令齐全，全部从 `git credential` 取 token。
+**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），十二个子命令齐全，全部从 `git credential` 取 token。
 
 ```bash
 # 建数据目录（只需一次；已存在的文件不覆盖）
@@ -254,6 +255,9 @@ python scripts/prtool.py api /repos/owner/repo/pulls/12/comments
 python scripts/prtool.py closed --repo owner/repo
 python scripts/prtool.py closed --repo owner/repo --only unmerged --reasons
 python scripts/prtool.py closed --repo owner/repo --only merged --with-merger --limit 20
+
+# 推送前跑该仓 CI 门禁：读 conventions §2「CI 门禁」表，逐条执行（不加 --run 只列清单）
+python scripts/prtool.py gates --project dify --run --base origin/main
 
 # 追加一条事件到 JSONL 台账（相对路径按数据目录解析）
 python scripts/prtool.py append --file state/prs.jsonl --json '{"ts":"2026-11-27T02:10:00Z","project":"<项目>","pr":123,"status":"merged"}'
@@ -281,6 +285,7 @@ python scripts/prtool.py whoami
 | `issues`（默认 `--linked-limit 15`） | 1 + 15 = 16；`--no-linked` 是 1；`--linked-limit 6` 是 7 |
 | `pr <PR>` | 1（GraphQL 一次拿详情/评论/review/行内/文件） |
 | `closed --limit N` | 1；`--reasons` 每条未合并 +1（默认最多 20）；`--with-merger` 每条已合并 +1（默认最多 20） |
+| `gates`（列清单） | 0 次 API；`--run` 执行本地命令，单条默认 600s 超时，本机没有的命令算 skip |
 | `api <path>` | 1，`?per_page=100` 也只算 1 |
 | `where` / `onboard` / `append` / `check` / `init` / `whoami`（配置齐全时） | 0 |
 
