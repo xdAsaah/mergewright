@@ -180,18 +180,21 @@ A few constraints cannot be bypassed:
 5. **Every session ends by writing back** to the archive; unwritten work is wasted work
 6. **Every session decides the PR type before hunting candidates**, not after. Only five types: `fix` / `test` / `feat` / `perf` / `docs`
 
-## What to do next (four tiers)
+## What to do next (five tiers)
 
 Each session checks top-down and stops at the first hit:
 
 | Tier | Condition | Action |
 | --- | --- | --- |
-| 1 | `candidates.md` has ready-to-submit candidates | Report them and ask whether to submit |
+| 0 | `candidates.md` has an in-progress entry | Take it over: read the recorded branch, inspect `git log` / `git diff`, finish it |
+| 1 | Has ready-to-submit candidates | Report them and ask whether to submit |
 | 2 | Has candidates awaiting verification | Gather evidence first; promote when ready |
-| 3 | Both empty, and the project has **0 PRs** | Recommend low-value directions as a door-opener |
-| 4 | Both empty, and PRs already submitted | Ask the user which type to do |
+| 3 | All empty, and the project has **0 PRs** | Recommend low-value directions as a door-opener |
+| 4 | All empty, and PRs already submitted | Ask the user which type to do |
 
-The first two tiers skip the type question: the candidate is already in hand, so just ask "shall we do it". Tier 3's "0 PRs" is not "0 merged"; a submitted-but-closed PR counts as having a record.
+Tier 0 exists because a half-finished branch is the one thing a broken session can silently waste. The record is written **before** the branch is created, so the next agent knows to continue rather than restart.
+
+Tiers 1 and 2 skip the type question: the candidate is already in hand, so just ask "shall we do it". Tier 3's "0 PRs" is not "0 merged"; a submitted-but-closed PR counts as having a record.
 
 ## How issues are used
 

@@ -96,9 +96,10 @@ python scripts/prtool.py where --project <项目>
 3. **证据要够。** 兜底类修复的门槛查 `conventions/<项目>.md` 的「维护者政策」；该字段为空时默认按 `references/verify.md` 的 L2/L3 标准。
 4. **标题写「场景：旧行为 → 新行为」**，正文格式按 `conventions/<项目>.md` 的「PR 正文模板」。
 5. **每次会话结束必须回填**：`projects/_index.md` 的下一个动作、对应项目的 `ledger.md` / `candidates.md`、`state/*.jsonl` 追加事件。不写等于白做。
-6. **踩到的坑当场归类**：只对这个项目成立 → 写该项目 `ledger.md` 的教训；换个项目也成立 → 写 `lessons.md`。别只留在对话里。
-7. **每次会话都要先定 PR 类型再挖候选**，不要挖完一堆再问用户要不要。类型只用五类：`fix` / `test` / `feat` / `perf` / `docs`。**例外**：`candidates.md` 的待提/待验证档已有内容时，直接汇报那些候选，不重新问类型。
-8. **先看已有候选，再挖新的。** 已经挖出来、证据齐的候选，优先级高于任何新方向。
+6. **开分支改代码之前，先在 `candidates.md` 的「进行中」档写一行**（分支名、已改文件、卡在哪）。这是唯一一处会因会话中断而直接导致重复劳动的地方。
+7. **踩到的坑当场归类**：只对这个项目成立 → 写该项目 `ledger.md` 的教训；换个项目也成立 → 写 `lessons.md`。别只留在对话里。
+8. **每次会话都要先定 PR 类型再挖候选**，不要挖完一堆再问用户要不要。类型只用五类：`fix` / `test` / `feat` / `perf` / `docs`。**例外**：`candidates.md` 的进行中/待提/待验证档已有内容时，直接接手或汇报，不重新问类型。
+9. **先看已有候选，再挖新的。** 已经动手或挖出来、证据齐的候选，优先级高于任何新方向。
 
 ## 路由表
 
@@ -106,7 +107,7 @@ python scripts/prtool.py where --project <项目>
 | --- | --- |
 | **第一次用、还没设置偏好** | `references/init.md` |
 | **检查 git 提交身份、noreply 邮箱** | `scripts/prtool.py whoami` |
-| **接手一个已有项目**（默认入口） | `projects/_index.md` → `conventions/<项目>.md` → 该项目 `candidates.md` |
+| **接手一个已有项目**（默认入口） | `projects/_index.md` → `conventions/<项目>.md` → 该项目 `candidates.md`（先看「进行中」档） |
 | **代码在哪 / 工作副本路径** | `scripts/prtool.py where --project <项目>` |
 | **新项目进场**（还没有 conventions） | `references/onboard-project.md` |
 | 选新项目、评估值不值得去 | `references/choose-project.md` |
@@ -135,7 +136,7 @@ python scripts/prtool.py where --project <项目>
 | 某项目的背景、仓库地图、领域约定 | `projects/<项目>/profile.md` |
 | 某项目提过哪些 PR、结果如何、维护者改了什么 | `projects/<项目>/ledger.md` |
 | 某项目哪些方向已排除（防重复调研） | `projects/<项目>/excluded.md` |
-| 某项目待验证 / 待提 / 已筛掉的候选 | `projects/<项目>/candidates.md` |
+| 某项目进行中 / 待提 / 待验证 / 已筛掉的候选 | `projects/<项目>/candidates.md` |
 | 某项目看过 / 认领 / 自己开的 issue | `projects/<项目>/issues.md` |
 | 严重线的覆盖缺口清单 | `projects/<项目>/coverage.md`（按需创建） |
 | PR 事件流水（机器读，算合并率用） | `state/prs.jsonl` |
@@ -153,26 +154,29 @@ python scripts/prtool.py where --project <项目>
 3. **确认代码在哪**：`python scripts/prtool.py where --project <项目>`。有「本机可用」就直接用那个路径，不要问用户；没有就先 clone，再 `where --path` 记一条。
 4. **读该项目的 `conventions/<项目>.md`** —— 没有就先跑 `references/onboard-project.md`。
 5. 读该项目的 `candidates.md`、`excluded.md`、`issues.md`，**不要重走已排除的方向**。
-6. **按四档优先级决定这次做什么**（见下节）。
+6. **按五档优先级决定这次做什么**（见下节，第 0 档是「进行中」）。
 7. 挖候选时按 `references/hunt-candidate.md`；每个候选按 `references/verify.md` 定性。
 8. 汇报候选与证据，等用户决定。
-9. 用户同意后按 `references/write-pr.md` + 该项目 conventions 开 PR。
-10. 回填：`candidates.md` 状态（带类型）、`state/scans.jsonl` 追加一条、`_index.md` 更新下一个动作；本轮踩到的坑按第 6 条硬规则归类。
+9. 用户同意后按 `references/write-pr.md` + 该项目 conventions 开 PR。**开分支前先在 `candidates.md` 的「进行中」档写一行。**
+10. 回填：`candidates.md` 状态（进行中→待提→已完成，带类型）、`state/scans.jsonl` 追加一条、`_index.md` 更新下一个动作；本轮踩到的坑按第 7 条硬规则归类。
 11. PR 有结果时：更新 `ledger.md`、`state/prs.jsonl`、`profile.md` 的维护者画像；每 5 个 PR 更新一次 `ledger.md` 的「类型复盘」表。
 12. 收尾跑一次 `python scripts/prtool.py check`，确认档案没写坏。
 
-## 第五步：这次做什么（四档优先级）
+## 第五步：这次做什么（五档优先级）
 
 **从上往下查，命中就停，不要跳档。**
 
 | 档 | 条件 | 做什么 | 问不问用户 |
 | --- | --- | --- | --- |
-| **1** | `candidates.md` 的「待提」档非空 | 直接汇报这几个候选，问要不要提 | 只问「提哪个」，不问类型 |
+| **0** | `candidates.md` 的「进行中」档非空 | **先接手**：读那行记的分支和已改文件，`git log`/`git diff` 看做到哪一步，接着做完 | 问「继续这条，还是放弃」 |
+| **1** | 「待提」档非空 | 直接汇报这几个候选，问要不要提 | 只问「提哪个」，不问类型 |
 | **2** | 「待验证」档非空 | 先补证据，够格就升到待提 | 问「要不要继续验证这条」 |
-| **3** | 两档都空，且该项目**提过 0 个 PR** | 推荐低价值方向（docs / test / 平台兼容）作为敲门砖 | 给推荐 + 理由，等确认 |
-| **4** | 两档都空，且已提过 PR | **问用户这次做哪类**（见 `references/first-pr.md` 第六节） | 必须问 |
+| **3** | 前三档都空，且该项目**提过 0 个 PR** | 推荐低价值方向（docs / test / 平台兼容）作为敲门砖 | 给推荐 + 理由，等确认 |
+| **4** | 前三档都空，且已提过 PR | **问用户这次做哪类**（见 `references/first-pr.md` 第六节） | 必须问 |
 
-**为什么前两档不问类型**：候选已经挖好、证据已经在手，再问「你想做哪类」是浪费一轮对话。直接说「有个 fix 候选等着，证据是 X，要做吗」。
+**第 0 档为什么排最前**：已经开分支、改了代码的活，重做一遍的成本远高于任何新候选。上一个会话断在这里，说明当时判断过值得做。先看它，再谈新的。
+
+**为什么第 1、2 档不问类型**：候选已经挖好、证据已经在手，再问「你想做哪类」是浪费一轮对话。直接说「有个 fix 候选等着，证据是 X，要做吗」。
 
 **第 3 档的判定**：`ledger.md` 里 PR 记录为 0 条。**注意是 0 个 PR，不是 0 个 merged**——提过但被关闭的项目算「有记录」，走第 4 档，因为它已经暴露过维护者的态度。
 

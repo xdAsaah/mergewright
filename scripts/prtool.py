@@ -168,6 +168,25 @@ def git_remote_repo(path):
     return norm_repo(run(["git", "-C", path, "remote", "get-url", "origin"]).strip())
 
 
+def git_branch(path):
+    """当前分支；detached 时返回短 SHA。"""
+    b = run(["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"]).strip()
+    if b and b != "HEAD":
+        return b
+    return run(["git", "-C", path, "rev-parse", "--short", "HEAD"]).strip()
+
+
+def git_dirty(path):
+    """未提交改动：返回 (文件数, 是否有未推送提交)。"""
+    st = run(["git", "-C", path, "status", "--porcelain"]).strip()
+    changed = len([ln for ln in st.splitlines() if ln.strip()])
+    ahead = 0
+    ab = run(["git", "-C", path, "rev-list", "--count", "@{u}..HEAD"]).strip()
+    if ab.isdigit():
+        ahead = int(ab)
+    return changed, ahead
+
+
 def read_workspaces(data):
     """读 state/workspaces.jsonl，同 (project, host, path) 只保留最后一条。"""
     path = os.path.join(data, "state", "workspaces.jsonl")
@@ -261,30 +280,53 @@ def cmd_where(args):
             print("进项目时跑 onboard --path，会自动记下路径。")
         return 0
 
-    print(f"{'项目':<18} {'本机':<8} {'主机':<16} 路径")
+    print(f"{'项目':<18} {'本机':<8} {'分支':<26} {'状态':<12} 路径")
     for r in rows:
         p = r.get("path", "")
         exists = os.path.isdir(p)
+        branch, dirty = "-", "-"
         if not exists:
             mark = "别的机器" if r.get("host") != this_host else "缺失"
         else:
             cur = git_remote_repo(p)
             want = norm_repo(r.get("repo", ""))
             mark = "remote不符" if cur and want and cur != want else "可用"
-        print(f"{r.get('project',''):<18} {mark:<8} {r.get('host',''):<16} {p}")
+            branch = git_branch(p) or "-"
+            if branch == "-":
+                dirty = "非 git 目录"
+            else:
+                n, ahead = git_dirty(p)
+                bits = []
+                if n:
+                    bits.append(f"{n} 处未提交")
+                if ahead:
+                    bits.append(f"{ahead} 个未推送")
+                dirty = "，".join(bits) if bits else "干净"
+        print(f"{r.get('project',''):<18} {mark:<8} {branch:<26} {dirty:<12} {p}")
 
     print()
     usable = [r for r in rows if os.path.isdir(r.get("path", ""))]
     if args.project and usable:
-        print(f"本机可用：{usable[0]['path']}")
-        print("直接用这个路径，不要再问用户要仓库位置。")
+        r = usable[0]
+        p = r["path"]
+        print(f"本机可用：{p}")
+        branch = git_branch(p)
+        if branch:
+            print(f"当前分支：{branch}")
+        n, ahead = git_dirty(p)
+        if n or ahead:
+            print(f"有未完成状态：{n} 处未提交改动" + (f"，{ahead} 个提交未推送" if ahead else ""))
+            print("动手前先看 git diff / git log，可能是上一个 agent 的半成品，别重做。")
+        else:
+            print("工作区干净，可以直接开工。")
+        print("不要问用户要仓库位置。")
     elif not usable:
         print("本机没有可用的工作副本。先 clone 一份，再跑：")
         repo = rows[0].get("repo", "") or "<owner/repo>"
         print(f"  git clone https://github.com/{repo}.git <你要放的目录>")
         print(f"  python scripts/prtool.py where --project {rows[0].get('project', '<项目>')} --path <你要放的目录>")
     else:
-        print("加 --project <项目> 只看一个，直接给出该用的路径。")
+        print("加 --project <项目> 只看一个，直接给出该用的路径和分支状态。")
     return 0
 
 
