@@ -395,12 +395,17 @@ def cmd_issues(args):
             if prs:
                 open_pr = [p for p in prs if p["state"] in ("open", "opened")]
                 merged_pr = [p for p in prs if p["merged"]]
+                failed_pr = [p for p in prs if p["state"] == "closed" and not p["merged"]]
                 if open_pr:
                     r["tags"].append("已有 PR 在审")
                 elif merged_pr:
                     r["tags"].append("已修待确认")
                 else:
                     r["tags"].append("有相关 PR")
+                # PR 坟场：多次尝试都没合进去，说明问题难做或要求不明确
+                if len(failed_pr) >= args.min_failed_prs:
+                    r["tags"].append(f"多 PR 未合×{len(failed_pr)}")
+                    r["failed_prs"] = failed_pr
 
     # 排序：新手友好/欢迎 PR 优先；已有 PR 的压到最后
     def rank(r):
@@ -415,6 +420,8 @@ def cmd_issues(args):
             score += 40
         if "已修待确认" in r["tags"]:
             score += 25
+        if r.get("failed_prs"):
+            score += 35
         return (score, -(r["age"] or 0))
 
     rows.sort(key=rank)
@@ -432,7 +439,14 @@ def cmd_issues(args):
         if r["labels"]:
             meta.append(", ".join(r["labels"][:4]))
         print(f"      {' · '.join(meta)}")
-        for p in r["prs"]:
+        # 坟场 issue 只显示最近 3 个失败 PR，避免刷屏
+        shown = r["prs"]
+        if r.get("failed_prs") and len(shown) > 3:
+            keep = [p for p in shown if p not in r["failed_prs"]][:1]
+            keep += r["failed_prs"][:3]
+            shown = keep
+            print(f"      （另有 {len(r['prs']) - len(shown)} 个关联 PR 未显示）")
+        for p in shown:
             state = "merged" if p["merged"] else p["state"]
             print(f"      ↳ PR #{p['number']} [{state}] {p['title']}  @{p['author']}")
 
@@ -443,12 +457,14 @@ def cmd_issues(args):
     claimed = [r for r in rows if "已认领" in r["tags"]]
     has_pr = [r for r in rows if "已有 PR 在审" in r["tags"]]
     done = [r for r in rows if "已修待确认" in r["tags"]]
+    grave = [r for r in rows if r.get("failed_prs")]
     print(f"可优先看：{len(good)} 个（新手友好 / 欢迎 PR）")
     print(f"长期未修：{len(stale)} 个（≥90 天且未认领）")
     print(f"已认领：{len(claimed)} 个（不要碰）")
     if not args.no_linked:
         print(f"已有 PR 在审：{len(has_pr)} 个（别重复做）")
         print(f"已修待确认：{len(done)} 个（PR 已合，issue 可能忘关）")
+        print(f"多 PR 未合：{len(grave)} 个（≥{args.min_failed_prs} 次尝试失败，先问维护者）")
     return 0
 
 
@@ -992,6 +1008,8 @@ def main(argv=None):
                    help="查关联 PR 的 issue 数上限，默认 15（每个多一次请求）")
     i.add_argument("--no-linked", action="store_true",
                    help="不查关联 PR，速度快但会漏掉「已有人在修」的 issue")
+    i.add_argument("--min-failed-prs", type=int, default=3,
+                   help="多少个已关闭未合并的 PR 算「多 PR 未合」，默认 3")
     i.set_defaults(func=cmd_issues)
 
     args = ap.parse_args(argv)
