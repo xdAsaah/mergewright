@@ -146,6 +146,7 @@ python scripts/prtool.py whoami
 ## 命令
 
 ```bash
+python scripts/prtool.py init
 python scripts/prtool.py status  --repo owner/repo --author 你的用户名
 python scripts/prtool.py issues  --repo owner/repo
 python scripts/prtool.py onboard --path <本地仓库>
@@ -157,6 +158,7 @@ python scripts/prtool.py whoami
 
 | 子命令 | 做什么 |
 | --- | --- |
+| `init` | 从 `_seed/` 建数据目录骨架；已存在的文件不覆盖 |
 | `status` | 现算合并率、open 积压、通道活性，按 PR 类型分组统计；支持 GitHub / GitLab |
 | `issues` | 扫 open issue，标新手友好 / 欢迎 PR / 长期未修 / 已认领 / 已有 PR 在审 / 已修待确认 / 有相关 PR / 多 PR 未合 |
 | `onboard` | 读本地仓库，推导出 commit 规范、测试命令、PR 模板等；同时记下工作副本路径 |
@@ -167,7 +169,9 @@ python scripts/prtool.py whoami
 
 只依赖 Python 3.8+ 标准库，无第三方包。凭据从 `git credential` 取，不落盘、不回显。
 
-`scripts/*.ps1` 是 Windows PowerShell 的等价实现，但只覆盖 `status` / `onboard` / `append` 三个子命令，**没有 `issues`、`check`、`whoami`、`where`**。
+`init` / `append` / `check` / `onboard` / `where` 都接受 `--data <路径>`，指向别的数据目录。
+
+`scripts/*.ps1` 是 Windows PowerShell 的等价实现，但只覆盖 `status` / `onboard` / `append` 三个子命令，**没有 `init`、`issues`、`check`、`whoami`、`where`**。
 
 ## 硬规则
 
@@ -241,7 +245,7 @@ python scripts/prtool.py issues --repo owner/repo
 ## 目录
 
 ```
-mergewright/                ← skill 包（只读，每个 agent 一份）
+mergewright/              ← skill 包（只读，每个 agent 一份）
 ├── SKILL.md              入口：路由表、硬规则、会话流程
 ├── .claude-plugin/       Claude Code 插件与 marketplace manifest
 ├── README.md / README.zh.md
@@ -255,7 +259,7 @@ mergewright/                ← skill 包（只读，每个 agent 一份）
 │   ├── follow-up.md      跟进：review 风格 + 止损
 │   ├── severe-scan.md    严重 bug：不变量 + 攻击面矩阵
 │   └── first-pr.md       首 PR 与阶段策略
-├── scripts/              7 个 Python 子命令 + 3 个 PowerShell 等价实现
+├── scripts/              8 个 Python 子命令 + 3 个 PowerShell 等价实现
 └── _seed/                空模板，由 init 拷到数据目录
     ├── preferences.md
     ├── lessons.md
@@ -263,7 +267,7 @@ mergewright/                ← skill 包（只读，每个 agent 一份）
     ├── projects/_index.md + _template/（profile/ledger/candidates/excluded/issues）
     └── state/prs.jsonl + scans.jsonl + workspaces.jsonl
 
-~/.mergewright/             ← 你的数据（所有 agent 共用）
+~/.mergewright/           ← 你的数据（所有 agent 共用）
 ├── preferences.md
 ├── lessons.md
 ├── conventions/<项目>.md

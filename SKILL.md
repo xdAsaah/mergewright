@@ -206,7 +206,7 @@ python scripts/prtool.py where --project <项目>
 
 ## 脚本
 
-**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），七个子命令齐全。
+**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），八个子命令齐全。
 
 ```bash
 # 建数据目录（只需一次；已存在的文件不覆盖）
@@ -245,7 +245,7 @@ python scripts/prtool.py whoami
 .\scripts\onboard.ps1 -Path <本地仓库路径>
 ```
 
-这种情况下，`init` 需要手动建目录（从 skill 包的 `_seed/` 拷到 `~/.mergewright/`），`check` 和 `whoami` 的检查项也要手动做：`check` 见下方清单，`whoami` 见 `references/init.md` 第三节的「手动设置」。
+这种情况下，`init` 需要手动建目录（从 skill 包的 `_seed/` 拷到 `~/.mergewright/`），`where` 要手动看 `state/workspaces.jsonl`，`check` 和 `whoami` 的检查项也要手动做：`check` 见下方清单，`whoami` 见 `references/init.md` 第三节的「手动设置」。
 
 **`check` 手工核对清单**（没有 Python 时）：
 

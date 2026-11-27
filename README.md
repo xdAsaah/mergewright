@@ -171,7 +171,7 @@ python scripts/prtool.py whoami
 
 Only the Python 3.8+ standard library, no third-party packages. Credentials come from `git credential`; never written to disk, never echoed.
 
-`scripts/*.ps1` are Windows PowerShell equivalents, but they cover only `status` / `onboard` / `append`. **They do not include `issues`, `check`, `whoami`, or `where`.**
+`scripts/*.ps1` are Windows PowerShell equivalents, but they cover only `status` / `onboard` / `append`. **They do not include `init`, `issues`, `check`, `whoami`, or `where`.**
 
 ## Hard rules
 
@@ -245,7 +245,7 @@ Then it **asks you which type to do this time**. It does not decide for you. Can
 ## Layout
 
 ```
-mergewright/                ← skill package (read-only, one per agent)
+mergewright/              ← skill package (read-only, one per agent)
 ├── SKILL.md              Entry point: routing table, hard rules, session flow
 ├── .claude-plugin/       Claude Code plugin + marketplace manifests
 ├── README.md / README.zh.md
@@ -259,7 +259,7 @@ mergewright/                ← skill package (read-only, one per agent)
 │   ├── follow-up.md      Following up: review styles + stop-loss
 │   ├── severe-scan.md    Severe bugs: invariants + attack-surface matrix
 │   └── first-pr.md       First PR and stage strategy
-├── scripts/              7 Python subcommands + 3 PowerShell equivalents
+├── scripts/              8 Python subcommands + 3 PowerShell equivalents
 └── _seed/                Blank templates, copied by `init`
     ├── preferences.md
     ├── lessons.md
@@ -267,7 +267,7 @@ mergewright/                ← skill package (read-only, one per agent)
     ├── projects/_index.md + _template/ (profile/ledger/candidates/excluded/issues)
     └── state/prs.jsonl + scans.jsonl + workspaces.jsonl
 
-~/.mergewright/             ← your data (shared by every agent)
+~/.mergewright/           ← your data (shared by every agent)
 ├── preferences.md
 ├── lessons.md
 ├── conventions/<project>.md
