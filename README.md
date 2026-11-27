@@ -71,6 +71,17 @@ This creates `~/.pr-merged/` with the archive skeleton. Existing files are never
 
 **Only need the method, not the memory?** Copy `SKILL.md` and `references/` alone. They have no dependency on the state files.
 
+### Claude Code plugin
+
+The repo also ships `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, so Claude Code can install it as a plugin instead of a loose skill:
+
+```bash
+/plugin marketplace add xdAsaah/pr-merged
+/plugin install pr-merged@pr-merged
+```
+
+Both manifests pass `claude plugin validate`. The plugin entry only points back at this directory, so the skill files stay exactly where they are — nothing is duplicated.
+
 ## Where your work lives
 
 **The skill package and your data are two separate directories.** This is deliberate.
@@ -209,6 +220,7 @@ Then it **asks you which type to do this time**. It does not decide for you. Can
 ```
 pr-merged/                ← skill package (read-only, one per agent)
 ├── SKILL.md              Entry point: routing table, hard rules, session flow
+├── .claude-plugin/       Claude Code plugin + marketplace manifests
 ├── README.md / README.zh.md
 ├── references/           Method layer, 9 files
 │   ├── init.md           First run: create data dir, 3 questions, identity check

@@ -71,6 +71,17 @@ python <你的-agent-skills-目录>/pr-merged/scripts/prtool.py init
 
 **只要方法、不要记忆功能？** 只拷 `SKILL.md` 和 `references/` 即可，它们不依赖状态文件。
 
+### Claude Code 插件
+
+仓库里还带了 `.claude-plugin/plugin.json` 和 `.claude-plugin/marketplace.json`，所以 Claude Code 可以按插件方式安装，不必手动往 skills 目录里放：
+
+```bash
+/plugin marketplace add xdAsaah/pr-merged
+/plugin install pr-merged@pr-merged
+```
+
+两个 manifest 都通过了 `claude plugin validate`。插件条目只是指回本目录，skill 文件位置不变，没有第二份拷贝。
+
 ## 你的记录存在哪
 
 **skill 包和数据是两个目录，这是故意的。**
@@ -205,6 +216,7 @@ python scripts/prtool.py issues --repo owner/repo
 ```
 pr-merged/                ← skill 包（只读，每个 agent 一份）
 ├── SKILL.md              入口：路由表、硬规则、会话流程
+├── .claude-plugin/       Claude Code 插件与 marketplace manifest
 ├── README.md / README.zh.md
 ├── references/           方法层，9 个文件
 │   ├── init.md           首次使用：建数据目录、3 个问题、身份检查
