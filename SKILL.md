@@ -100,6 +100,7 @@ python scripts/prtool.py where --project <项目>
 7. **踩到的坑当场归类**：只对这个项目成立 → 写该项目 `ledger.md` 的教训；换个项目也成立 → 写 `lessons.md`。别只留在对话里。
 8. **每次会话都要先定 PR 类型再挖候选**，不要挖完一堆再问用户要不要。类型只用五类：`fix` / `test` / `feat` / `perf` / `docs`。**例外**：`candidates.md` 的进行中/待提/待验证档已有内容时，直接接手或汇报，不重新问类型。
 9. **先看已有候选，再挖新的。** 已经动手或挖出来、证据齐的候选，优先级高于任何新方向。
+10. **用户基于你的结论批准动作时，动手前先复核那个结论。** 结论在你自己手里时是判断，错了代价为零；用户一旦据此批准，它就是行动依据，错了烧的是他的信誉和一个 PR 号。**凡「没有守护 / 没有测试 / 不存在」这类否定判断，复核时必须按文件名定位、整段读过对应测试文件**——搜索没命中不等于不存在，被截断的检索结果更不能当证据。细则见 `references/verify.md` 第八节。
 
 ## 路由表
 
@@ -116,6 +117,7 @@ python scripts/prtool.py where --project <项目>
 | 写 PR 标题 / 正文 / commit | `references/write-pr.md` + `conventions/<项目>.md` |
 | 维护者回复了、要不要改、怎么止损 | `references/follow-up.md` |
 | 找严重 bug（S1/S2 线） | `references/severe-scan.md` |
+| **做覆盖缺口清单 / 判断某条不变量有没有守护** | `projects/<项目>/coverage.md`，从 `_seed/projects/_template/coverage.md` 建；判定细则见 `references/verify.md` 第八节 |
 | **这次该提哪类 PR、问用户选类型** | `references/first-pr.md` 第六节 + `conventions/<项目>.md` 的「PR 类型接受度」 |
 | **从 issue 里找候选** | `references/hunt-candidate.md` 第 7 种手法 |
 | **判断要不要先开 issue** | `conventions/<项目>.md` 的 3.2「issue 政策」 |

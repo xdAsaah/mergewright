@@ -1322,6 +1322,32 @@ def cmd_check(args):
             if "[推导]" not in text and "[观察]" not in text and "[用户定]" not in text:
                 add("warn", f"conventions/{fn}", "没有任何来源标记（[推导]/[观察]/[用户定]）")
 
+    # 4b. coverage.md：判「无守护」的行必须留下证据（见 references/verify.md 第八节）
+    #     负向断言最容易翻车：只看了被截断的检索结果就断言「没有测试」，
+    #     最后会变成一个「测试已经存在」的空 PR。所以缺口行必须引用 tests/ 文件。
+    GAP_WORDS = ("无守护", "零守护", "缺守护", "只验单侧", "守护不全")
+    project_root = os.path.join(data, "projects")
+    if os.path.isdir(project_root):
+        for project in sorted(os.listdir(project_root)):
+            cov = os.path.join(project_root, project, "coverage.md")
+            if not os.path.isfile(cov):
+                continue
+            rel_cov = f"projects/{project}/coverage.md"
+            with open(cov, encoding="utf-8", errors="replace") as f:
+                for i, line in enumerate(f, 1):
+                    s = line.strip()
+                    if not s.startswith("|"):
+                        continue
+                    if not any(word in s for word in GAP_WORDS):
+                        continue
+                    # 表头与分隔行本身就是说明文字，不算缺口行
+                    if s.startswith("| 不变量") or set(s) <= set("|-: "):
+                        continue
+                    if not re.search(r"tests?/[\w.\-/]+", s):
+                        add("err", f"{rel_cov}:{i}",
+                            "判了缺口却没引用任何 tests/ 文件：按 references/verify.md 第八节"
+                            "整段读过对应测试文件，把文件名和检索命令写到这一行")
+
     # 5. 数据顶层必备文件
     for rel in ("preferences.md", "lessons.md"):
         if not os.path.isfile(os.path.join(data, rel)):
