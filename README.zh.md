@@ -71,8 +71,6 @@ python <你的-agent-skills-目录>/mergewright/scripts/prtool.py init
 
 会在 `~/.mergewright/` 建好档案骨架。已存在的文件不会覆盖，重复跑是安全的。
 
-**从 `pr-merged` 升级过来的？** 已有的 `~/.pr-merged/` 目录和 `PR_MERGED_HOME` 环境变量继续有效——旧目录还在时工具就用旧目录，历史记录不会丢。想彻底搬到新位置，跑 `mv ~/.pr-merged ~/.mergewright`。
-
 **只要方法、不要记忆功能？** 只拷 `SKILL.md` 和 `references/` 即可，它们不依赖状态文件。
 
 ### Claude Code 插件

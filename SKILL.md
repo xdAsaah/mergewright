@@ -44,8 +44,6 @@ python scripts/prtool.py init
 2. 环境变量 `MERGEWRIGHT_HOME`
 3. 默认 `~/.mergewright/`
 
-**老用户兼容**：这个技能以前叫 `pr-merged`。已有的 `~/.pr-merged/` 目录和 `PR_MERGED_HOME` 环境变量仍然有效——`~/.mergewright/` 不存在而 `~/.pr-merged/` 存在时，工具会继续用旧目录，历史记录不受影响。想彻底搬到新目录，把旧目录改个名即可（`mv ~/.pr-merged ~/.mergewright`）。
-
 **为什么这样分**：同一台机器上可能装了 Trae、Claude Code、Codex 各一份 skill。如果数据跟着包走，切到另一个 agent 就是一份空档案，前面做过什么全不知道。分开之后，不管用哪个 agent，打开的都是同一份执行记录。
 
 skill 包里的 `_seed/` 是空模板，`init` 时拷到数据目录。**不要直接改 `_seed/` 里的文件**——那是模板，改了会影响下次初始化。

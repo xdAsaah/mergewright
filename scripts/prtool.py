@@ -116,23 +116,13 @@ def data_root(explicit=""):
 
     所有 projects/ conventions/ state/ preferences.md lessons.md 都在这里，
     不在 skill 包里——这样多个 agent 可以共用同一份执行记录。
-
-    改名兼容：这个技能以前叫 pr-merged。老用户已有的 $PR_MERGED_HOME
-    和 ~/.pr-merged/ 继续认，历史记录不会因为改名而丢失；两者都存在时
-    优先用新名字的目录。
     """
     if explicit:
         return os.path.abspath(os.path.expanduser(explicit))
-    for var in ("MERGEWRIGHT_HOME", "PR_MERGED_HOME"):
-        env = os.environ.get(var, "").strip()
-        if env:
-            return os.path.abspath(os.path.expanduser(env))
-    home = os.path.expanduser("~")
-    current = os.path.join(home, ".mergewright")
-    legacy = os.path.join(home, ".pr-merged")
-    if not os.path.isdir(current) and os.path.isdir(legacy):
-        return legacy
-    return current
+    env = os.environ.get("MERGEWRIGHT_HOME", "").strip()
+    if env:
+        return os.path.abspath(os.path.expanduser(env))
+    return os.path.join(os.path.expanduser("~"), ".mergewright")
 
 
 def data_file(rel, explicit=""):

@@ -71,8 +71,6 @@ python <your-agent-skills-dir>/mergewright/scripts/prtool.py init
 
 This creates `~/.mergewright/` with the archive skeleton. Existing files are never overwritten, so re-running is safe.
 
-**Upgrading from `pr-merged`?** Your `~/.pr-merged/` archive and `PR_MERGED_HOME` variable still work — the tool keeps using the old directory while it exists, so no history is lost. To move to the new location for good, run `mv ~/.pr-merged ~/.mergewright`.
-
 **Only need the method, not the memory?** Copy `SKILL.md` and `references/` alone. They have no dependency on the state files.
 
 ### Claude Code plugin
