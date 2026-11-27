@@ -222,6 +222,36 @@ def cmd_status(args):
         for i in sorted(items, key=lambda x: x["number"] or 0):
             state = f"merged {i['merged']}" if i["merged"] else i["state"]
             print(f"  #{i['number']} [{state}] {i['title']}")
+
+        # 按类型统计：从 conventional commit 前缀解析，解析不出的归到「无前缀」
+        def pr_type(title):
+            mm = re.match(r"^([a-z]+)(\([^)]+\))?!?:", title or "")
+            t = mm.group(1) if mm else ""
+            return t if t in ("fix", "test", "feat", "perf", "docs") else "(其他)"
+
+        stats = {}
+        for i in items:
+            t = pr_type(i["title"])
+            s = stats.setdefault(t, {"total": 0, "merged": 0, "closed": 0, "open": 0})
+            s["total"] += 1
+            if i["merged"]:
+                s["merged"] += 1
+            elif i["state"] in ("open", "opened"):
+                s["open"] += 1
+            elif i["state"] == "closed":
+                s["closed"] += 1
+        if stats:
+            print()
+            print(f"=== {author} 的 PR 按类型 ===")
+            order = ["fix", "test", "feat", "perf", "docs", "(其他)"]
+            for t in order + [k for k in stats if k not in order]:
+                s = stats.get(t)
+                if not s:
+                    continue
+                done = s["merged"] + s["closed"]
+                rate = f"{s['merged'] * 100 // done}%" if done else "—"
+                print(f"  {t:<7} 提交 {s['total']:>2}  合并 {s['merged']:>2}  "
+                      f"关闭 {s['closed']:>2}  在审 {s['open']:>2}  合并率 {rate}")
     return 0
 
 
@@ -691,7 +721,8 @@ def cmd_check(args):
     # 4. conventions 必备节
     conv_dir = os.path.join(root, "conventions")
     required = ["## 1. 托管与提交", "## 2. 测试要求", "## 3. 维护者政策",
-                "## 4. 领域约定", "## 6. 严重度口径", "## 7. 变更记录"]
+                "### 3.1 PR 类型接受度", "## 4. 领域约定",
+                "## 6. 严重度口径", "## 7. 变更记录"]
     if os.path.isdir(conv_dir):
         for fn in sorted(os.listdir(conv_dir)):
             if not fn.endswith(".md") or fn.startswith("_"):

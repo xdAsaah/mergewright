@@ -42,6 +42,7 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 4. **标题写「场景：旧行为 → 新行为」**，正文格式按 `conventions/<项目>.md` 的「PR 正文模板」。
 5. **每次会话结束必须回填**：`projects/_index.md` 的下一个动作、对应项目的 `ledger.md` / `candidates.md`、`state/*.jsonl` 追加事件。不写等于白做。
 6. **踩到的坑当场归类**：只对这个项目成立 → 写该项目 `ledger.md` 的教训；换个项目也成立 → 写 `lessons.md`。别只留在对话里。
+7. **每次会话都要先定 PR 类型再挖候选**，不要挖完一堆再问用户要不要。类型只用五类：`fix` / `test` / `feat` / `perf` / `docs`。
 
 ## 路由表
 
@@ -57,6 +58,7 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 | 写 PR 标题 / 正文 / commit | `references/write-pr.md` + `conventions/<项目>.md` |
 | 维护者回复了、要不要改、怎么止损 | `references/follow-up.md` |
 | 找严重 bug（S1/S2 线） | `references/severe-scan.md` |
+| **这次该提哪类 PR、问用户选类型** | `references/first-pr.md` 第六节 + `conventions/<项目>.md` 的「PR 类型接受度」 |
 | 查某项目当前 PR 状态与合并率 | `scripts/prtool.py status`（或 `scripts/pr-status.ps1`） |
 | **踩到一个坑，判断该记在哪** | `lessons.md` 第一节（判据）+ 第三节（贡献教训）/ 第四节（工具障碍） |
 | **检查档案有没有坏（死链、手写数字、坏 JSON）** | `scripts/prtool.py check` |
@@ -85,12 +87,13 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 2. 读 `projects/_index.md`，确定本次做哪个项目、做什么。
 3. **读该项目的 `conventions/<项目>.md`** —— 没有就先跑 `references/onboard-project.md`。
 4. 读该项目的 `candidates.md` 与 `excluded.md`，**不要重走已排除的方向**。
-5. 按 `references/hunt-candidate.md` 挖候选；每个候选按 `references/verify.md` 定性。
-6. 汇报候选与证据，等用户决定。
-7. 用户同意后按 `references/write-pr.md` + 该项目 conventions 开 PR。
-8. 回填：`candidates.md` 状态、`state/scans.jsonl` 追加一条、`_index.md` 更新下一个动作；本轮踩到的坑按第 6 条硬规则归类。
-9. PR 有结果时：更新 `ledger.md`、`state/prs.jsonl`、`profile.md` 的维护者画像。
-10. 收尾跑一次 `python scripts/prtool.py check`，确认档案没写坏。
+5. **定类型**：读 conventions 的「PR 类型接受度」+ 跑 `status` 看自己各类型的历史合并率，算出建议类型，然后**问用户这次做哪类**。详见 `references/first-pr.md` 第六节。
+6. 按选定类型，用 `references/hunt-candidate.md` 挖候选；每个候选按 `references/verify.md` 定性。
+7. 汇报候选与证据，等用户决定。
+8. 用户同意后按 `references/write-pr.md` + 该项目 conventions 开 PR。
+9. 回填：`candidates.md` 状态（带类型）、`state/scans.jsonl` 追加一条、`_index.md` 更新下一个动作；本轮踩到的坑按第 6 条硬规则归类。
+10. PR 有结果时：更新 `ledger.md`、`state/prs.jsonl`、`profile.md` 的维护者画像；每 5 个 PR 更新一次 `ledger.md` 的「类型复盘」表。
+11. 收尾跑一次 `python scripts/prtool.py check`，确认档案没写坏。
 
 ## 脚本
 
