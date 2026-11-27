@@ -13,11 +13,40 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 
 ## 第一次用：先做初始化
 
-**没有 `preferences.md` 或它还是空表** → 读 `references/init.md`，问 3 个只有用户知道的问题，一次问完。
+**先建数据目录**（只需一次）：
+
+```bash
+python scripts/prtool.py init
+```
+
+默认建在 `~/.pr-merged/`。已存在的文件不会覆盖，重复跑是安全的。
+
+**然后**：`preferences.md` 还是空表 → 读 `references/init.md`，问 3 个只有用户知道的问题，一次问完。
 
 不要跳过这一步直接找项目——目的、时间投入、技术栈这三项决定了后面所有判断。
 
 **提交身份不用问**，跑 `python scripts/prtool.py whoami` 自动检测，缺什么它会给出可直接执行的设置命令。
+
+## 数据在哪
+
+**skill 包和数据是两个目录，这一点很重要。**
+
+| | 位置 | 说明 |
+| --- | --- | --- |
+| **skill 包** | 你 clone 的地方（如 `~/.trae-cn/skills/pr-merged/`） | 只读。升级用 `git pull`，各 agent 各一份 |
+| **数据目录** | 默认 `~/.pr-merged/` | 唯一。所有执行记录都在这里，**多个 agent 共用同一份** |
+
+本文档和 `references/` 里提到的 `conventions/`、`projects/`、`state/`、`preferences.md`、`lessons.md`，**一律指数据目录下的路径**，不在 skill 包里。
+
+数据目录的确定顺序：
+
+1. 命令行 `--data <路径>`
+2. 环境变量 `PR_MERGED_HOME`
+3. 默认 `~/.pr-merged/`
+
+**为什么这样分**：同一台机器上可能装了 Trae、Claude Code、Codex 各一份 skill。如果数据跟着包走，切到另一个 agent 就是一份空档案，前面做过什么全不知道。分开之后，不管用哪个 agent，打开的都是同一份执行记录。
+
+skill 包里的 `_seed/` 是空模板，`init` 时拷到数据目录。**不要直接改 `_seed/` 里的文件**——那是模板，改了会影响下次初始化。
 
 ## 四层结构
 
@@ -27,6 +56,8 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 | **规则层** | `conventions/<项目>.md` | 这个仓库的 commit 规范、PR 模板、测试要求、维护者政策 | 每项目一份 |
 | **状态层** | `projects/` + `state/` | 台账、排除项、候选池、事件流水 | 每项目一份 |
 | **经验层** | `lessons.md` | 你自己踩过的坑，跨项目复用，还没成熟到进方法层 | 跨项目 |
+
+除方法层在 skill 包里，其余三层都在**数据目录**下。
 
 **规则层的值不要写进方法层。** 方法层只说「查 `conventions` 的 X」，具体值去规则文件看。
 
@@ -66,8 +97,11 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 | 查某项目当前 PR 状态与合并率 | `scripts/prtool.py status`（或 `scripts/pr-status.ps1`） |
 | **踩到一个坑，判断该记在哪** | `lessons.md` 第一节（判据）+ 第三节（贡献教训）/ 第四节（工具障碍） |
 | **检查档案有没有坏（死链、手写数字、坏 JSON）** | `scripts/prtool.py check` |
+| **数据目录还没建 / 换了新机器** | `scripts/prtool.py init` |
 
 ## 记录在哪（写之前先看这里）
+
+> 下表全部指**数据目录**下的路径（默认 `~/.pr-merged/`），不是 skill 包里的。
 
 | 想知道 | 文件 |
 | --- | --- |
@@ -139,26 +173,34 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 
 ## 脚本
 
-**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），五个子命令齐全。
+**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），六个子命令齐全。
 
 ```bash
+# 建数据目录（只需一次；已存在的文件不覆盖）
+python scripts/prtool.py init
+
 # 查某项目状态（现算合并率与通道活性；支持 GitHub / GitLab）
 python scripts/prtool.py status --repo owner/repo --author 你的用户名
 
-# 追加一条事件到 JSONL 台账
+# 扫 open issue，标新手友好 / 已有 PR 在审 / PR 坟场等
+python scripts/prtool.py issues --repo owner/repo
+
+# 追加一条事件到 JSONL 台账（相对路径按数据目录解析）
 python scripts/prtool.py append --file state/prs.jsonl --json '{"ts":"2026-11-27T02:10:00Z","project":"<项目>","pr":123,"status":"merged"}'
 
 # 进场采集（只做推导部分，输出可直接粘进 conventions）
 python scripts/prtool.py onboard --path <本地仓库路径>
 
-# 自检：死链、目录缺失、JSONL 合法性、conventions 必备节、手写数字
+# 自检：包完整性 + 数据档案健康度
 python scripts/prtool.py check
 
 # 检查提交身份，缺什么给出可直接执行的设置命令
 python scripts/prtool.py whoami
 ```
 
-**没有 Python 时**用 `scripts/*.ps1`（Windows PowerShell 5.1），但**只有三个子命令**，`check` 和 `whoami` 没有对应实现：
+`append` / `check` / `init` 都接受 `--data <路径>`，用来临时指向别的数据目录。
+
+**没有 Python 时**用 `scripts/*.ps1`（Windows PowerShell 5.1），但**只有三个子命令**，`init` / `issues` / `check` / `whoami` 都没有对应实现：
 
 ```powershell
 .\scripts\pr-status.ps1 -Repo owner/repo -Author 你的用户名
@@ -166,7 +208,7 @@ python scripts/prtool.py whoami
 .\scripts\onboard.ps1 -Path <本地仓库路径>
 ```
 
-这种情况下，`check` 和 `whoami` 的检查项需要手动做：`check` 见下方清单，`whoami` 见 `references/init.md` 第三节的「手动设置」。
+这种情况下，`init` 需要手动建目录（从 skill 包的 `_seed/` 拷到 `~/.pr-merged/`），`check` 和 `whoami` 的检查项也要手动做：`check` 见下方清单，`whoami` 见 `references/init.md` 第三节的「手动设置」。
 
 **`check` 手工核对清单**（没有 Python 时）：
 

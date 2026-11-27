@@ -101,6 +101,101 @@ def api_get(url, headers):
     return None
 
 
+# ---------------------------------------------------------------- 目录约定
+
+PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# 数据目录里应该有什么；init 时从包内的 _seed/ 拷
+DATA_ITEMS = ("preferences.md", "lessons.md", "conventions", "projects", "state")
+
+
+def data_root(explicit=""):
+    """数据目录：--data > $PR_MERGED_HOME > ~/.pr-merged。
+
+    所有 projects/ conventions/ state/ preferences.md lessons.md 都在这里，
+    不在 skill 包里——这样多个 agent 可以共用同一份执行记录。
+    """
+    if explicit:
+        return os.path.abspath(os.path.expanduser(explicit))
+    env = os.environ.get("PR_MERGED_HOME", "").strip()
+    if env:
+        return os.path.abspath(os.path.expanduser(env))
+    return os.path.join(os.path.expanduser("~"), ".pr-merged")
+
+
+def data_file(rel, explicit=""):
+    return os.path.join(data_root(explicit), rel)
+
+
+def seed_dir():
+    return os.path.join(PACKAGE_ROOT, "_seed")
+
+
+# ---------------------------------------------------------------- init
+
+def cmd_init(args):
+    """建数据目录骨架：从包内 _seed/ 拷模板，已存在的文件不覆盖。"""
+    root = data_root(args.data)
+    seed = seed_dir()
+    print(f"数据目录：{root}")
+
+    if not os.path.isdir(seed):
+        print(f"包内缺少 _seed/：{seed}", file=sys.stderr)
+        print("这个 skill 包装不完整，重新 clone 一次。", file=sys.stderr)
+        return 1
+
+    os.makedirs(root, exist_ok=True)
+    created, skipped = [], []
+
+    for name in DATA_ITEMS:
+        src = os.path.join(seed, name)
+        dst = os.path.join(root, name)
+        if not os.path.exists(src):
+            continue
+        if os.path.isdir(src):
+            for dirpath, _, files in os.walk(src):
+                rel = os.path.relpath(dirpath, src)
+                target_dir = dst if rel == "." else os.path.join(dst, rel)
+                os.makedirs(target_dir, exist_ok=True)
+                for fn in files:
+                    s = os.path.join(dirpath, fn)
+                    d = os.path.join(target_dir, fn)
+                    if os.path.exists(d):
+                        skipped.append(os.path.relpath(d, root))
+                        continue
+                    with open(s, "rb") as f:
+                        data = f.read()
+                    with open(d, "wb") as f:
+                        f.write(data)
+                    created.append(os.path.relpath(d, root))
+        else:
+            if os.path.exists(dst):
+                skipped.append(name)
+                continue
+            with open(src, "rb") as f:
+                data = f.read()
+            with open(dst, "wb") as f:
+                f.write(data)
+            created.append(name)
+
+    if created:
+        print(f"\n新建 {len(created)} 个：")
+        for c in created:
+            print(f"  + {c}")
+    if skipped:
+        print(f"\n已存在，跳过 {len(skipped)} 个（不会覆盖你的数据）：")
+        for s in skipped:
+            print(f"  = {s}")
+    if not created and not skipped:
+        print("\n没有可拷贝的模板。")
+
+    print()
+    print("下一步：")
+    print(f"  1. 填 {os.path.join(root, 'preferences.md')}（首次使用问 3 个问题）")
+    print(f"  2. python {os.path.join(PACKAGE_ROOT, 'scripts', 'prtool.py')} check")
+    return 0
+
+
 # ---------------------------------------------------------------- status
 
 def convert_pull(raw, platform, author):
@@ -677,7 +772,10 @@ def cmd_append(args):
         print("警告：缺少 ts 字段，建议补上 ISO 时间戳", file=sys.stderr)
 
     one_line = re.sub(r"\r?\n", " ", raw)
-    full = os.path.abspath(args.file)
+    # 相对路径按数据目录解析；绝对路径原样使用
+    p = args.file
+    full = p if os.path.isabs(p) else data_file(p, args.data)
+    full = os.path.abspath(os.path.expanduser(full))
     os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
 
     prefix = ""
@@ -700,7 +798,7 @@ def cmd_append(args):
         print(f"写入后最后一行不是合法 JSON，请检查 {args.file}", file=sys.stderr)
         return 1
 
-    print(f"appended -> {args.file}")
+    print(f"appended -> {full}")
     print(lines[-1])
     return 0
 
@@ -835,17 +933,46 @@ def cmd_whoami(args):
 # ---------------------------------------------------------------- check
 
 def cmd_check(args):
-    """自检：档案死链、目录缺失、JSONL 合法性、conventions 必备节、手写数字。"""
-    root = os.path.abspath(args.root or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    """自检分两段：skill 包是否完整、数据档案是否健康。"""
+    pkg = os.path.abspath(args.root or PACKAGE_ROOT)
+    data = data_root(args.data)
     problems = []
     notes = []
 
     def add(level, where, msg):
         (problems if level == "err" else notes).append(f"[{level}] {where}: {msg}")
 
+    # ============================================================ 包
+    print(f"=== 自检 · skill 包：{pkg} ===")
+
+    for rel in ("SKILL.md", "README.md", "LICENSE", "_seed/conventions/_TEMPLATE.md"):
+        if not os.path.isfile(os.path.join(pkg, rel)):
+            add("err", rel, "包内文件不存在")
+
+    if not os.path.isdir(seed_dir()):
+        add("err", "_seed/", "缺失，init 无法建数据目录")
+    else:
+        for item in DATA_ITEMS:
+            if not os.path.exists(os.path.join(seed_dir(), item)):
+                add("warn", f"_seed/{item}", "模板缺失，init 时不会创建这一项")
+
+    # ============================================================ 数据
+    print(f"=== 自检 · 数据目录：{data} ===")
+    if not os.path.isdir(data):
+        print()
+        print(f"  数据目录还没建。先跑：")
+        print(f"    python scripts/prtool.py init")
+        print(f"  或用 --data 指定，或设 PR_MERGED_HOME 环境变量。")
+        print()
+        if problems:
+            print(f"包有 {len(problems)} 个问题：")
+            for p in problems:
+                print("  " + p)
+        return 1 if problems else 0
+
     # 1. JSONL 合法性
     for name in ("prs.jsonl", "scans.jsonl"):
-        path = os.path.join(root, "state", name)
+        path = os.path.join(data, "state", name)
         if not os.path.isfile(path):
             add("err", f"state/{name}", "文件不存在")
             continue
@@ -868,7 +995,7 @@ def cmd_check(args):
     # 2. _index.md 里的项目：目录、规则文件、conventions 是否存在
     #    只解析第一张表（「项目 | 状态 | 规则文件 | 下一个动作 | 最后更新」），
     #    后面还有「保留什么 | 为什么」等说明性表格，不能一起当项目解析。
-    index = os.path.join(root, "projects", "_index.md")
+    index = os.path.join(data, "projects", "_index.md")
     if os.path.isfile(index):
         in_table = False
         header_cols = 0
@@ -894,13 +1021,13 @@ def cmd_check(args):
                     continue
                 state = cells[1] if len(cells) > 1 else ""
                 closed = any(k in state for k in ("已收尾", "已止损"))
-                proj_dir = os.path.join(root, "projects", name)
+                proj_dir = os.path.join(data, "projects", name)
                 if not os.path.isdir(proj_dir):
                     # 已收尾 / 已止损的项目允许只有索引行，不强制建目录
                     add("warn" if closed else "err", f"projects/_index.md:{i}",
                         f"项目 {name} 没有 projects/{name}/ 目录" + ("（已收尾，可不建）" if closed else ""))
                 for c in cells:
-                    if c.startswith("`conventions/") and not os.path.isfile(os.path.join(root, c.strip("`"))):
+                    if c.startswith("`conventions/") and not os.path.isfile(os.path.join(data, c.strip("`"))):
                         add("err", f"projects/_index.md:{i}", f"项目 {name} 引用的 {c.strip('`')} 不存在")
         # 手写合并数检查
         with open(index, encoding="utf-8") as f:
@@ -911,28 +1038,36 @@ def cmd_check(args):
     else:
         add("err", "projects/_index.md", "文件不存在")
 
-    # 3. 所有 markdown 里的相对路径引用是否存在
-    link_re = re.compile(r"`((?:references|conventions|projects|scripts|state|archive)/[^`\s]+?\.(?:md|py|ps1|jsonl))`")
-    for dirpath, dirnames, files in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in (".git", "__pycache__")]
-        for fn in files:
-            if not fn.endswith(".md"):
-                continue
-            full = os.path.join(dirpath, fn)
-            rel_self = os.path.relpath(full, root).replace(os.sep, "/")
-            if rel_self.startswith("archive/"):
-                continue
-            with open(full, encoding="utf-8", errors="replace") as f:
-                for i, line in enumerate(f, 1):
-                    for m in link_re.finditer(line):
-                        target = m.group(1)
-                        if "<" in target or "*" in target:
-                            continue
-                        if not os.path.exists(os.path.join(root, target)):
-                            add("err", f"{rel_self}:{i}", f"引用的 {target} 不存在")
+    # 3. 所有 markdown 里的相对路径引用
+    #    references/ scripts/ _seed/ → 包；conventions/ projects/ state/ → 数据
+    link_re = re.compile(r"`((?:references|conventions|projects|scripts|state|_seed)/[^`\s]+?\.(?:md|py|ps1|jsonl))`")
+
+    def resolve(target):
+        top = target.split("/", 1)[0]
+        base = data if top in ("conventions", "projects", "state") else pkg
+        return os.path.join(base, target)
+
+    for base_dir in (pkg, data):
+        for dirpath, dirnames, files in os.walk(base_dir):
+            dirnames[:] = [d for d in dirnames if d not in (".git", "__pycache__")]
+            for fn in files:
+                if not fn.endswith(".md"):
+                    continue
+                full = os.path.join(dirpath, fn)
+                rel_self = os.path.relpath(full, base_dir).replace(os.sep, "/")
+                if rel_self.startswith("archive/"):
+                    continue
+                with open(full, encoding="utf-8", errors="replace") as f:
+                    for i, line in enumerate(f, 1):
+                        for m in link_re.finditer(line):
+                            target = m.group(1)
+                            if "<" in target or "*" in target:
+                                continue
+                            if not os.path.exists(resolve(target)):
+                                add("err", f"{rel_self}:{i}", f"引用的 {target} 不存在")
 
     # 4. conventions 必备节
-    conv_dir = os.path.join(root, "conventions")
+    conv_dir = os.path.join(data, "conventions")
     required = ["## 1. 托管与提交", "## 2. 测试要求", "## 3. 维护者政策",
                 "### 3.1 PR 类型接受度", "### 3.2 issue 政策", "## 4. 领域约定",
                 "## 6. 严重度口径", "## 7. 变更记录"]
@@ -949,15 +1084,15 @@ def cmd_check(args):
             if "[推导]" not in text and "[观察]" not in text and "[用户定]" not in text:
                 add("warn", f"conventions/{fn}", "没有任何来源标记（[推导]/[观察]/[用户定]）")
 
-    # 5. 顶层必备文件
-    for rel in ("SKILL.md", "preferences.md", "lessons.md", "conventions/_TEMPLATE.md"):
-        if not os.path.isfile(os.path.join(root, rel)):
-            add("err", rel, "文件不存在")
+    # 5. 数据顶层必备文件
+    for rel in ("preferences.md", "lessons.md"):
+        if not os.path.isfile(os.path.join(data, rel)):
+            add("err", rel, "数据目录里缺少这个文件，跑一次 init")
 
     # 输出
-    print(f"=== 自检：{root} ===")
+    print()
     if problems:
-        print(f"\n发现 {len(problems)} 个问题：")
+        print(f"发现 {len(problems)} 个问题：")
         for p in problems:
             print("  " + p)
     if notes:
@@ -987,13 +1122,19 @@ def main(argv=None):
     o.set_defaults(func=cmd_onboard)
 
     a = sub.add_parser("append", help="往 JSONL 台账追加一条记录")
-    a.add_argument("--file", required=True)
+    a.add_argument("--file", required=True, help="相对路径按数据目录解析，绝对路径原样用")
     a.add_argument("--json", default="", help="省略则从 stdin 读")
+    a.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
     a.set_defaults(func=cmd_append)
 
-    c = sub.add_parser("check", help="自检档案：死链、目录缺失、JSONL 合法性、必备节")
-    c.add_argument("--root", default="", help="skill 根目录，默认取本脚本的上一级")
+    c = sub.add_parser("check", help="自检：skill 包完整性 + 数据档案健康度")
+    c.add_argument("--root", default="", help="skill 包根目录，默认取本脚本的上一级")
+    c.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
     c.set_defaults(func=cmd_check)
+
+    n = sub.add_parser("init", help="建数据目录骨架（已存在的文件不覆盖）")
+    n.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
+    n.set_defaults(func=cmd_init)
 
     w = sub.add_parser("whoami", help="检查 git 提交身份，缺什么给设置步骤")
     w.add_argument("--site", default="", help="默认 github.com")

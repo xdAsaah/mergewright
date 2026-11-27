@@ -1,13 +1,33 @@
 # 初始化：第一次用这个 skill
 
-> 触发：skill 目录里还没有 `preferences.md`，或用户说「重新设置一下」。
+> 触发：数据目录里还没有 `preferences.md`，或用户说「重新设置一下」。
 > **目标：问 3 个只有用户知道的问题，其余全部推导或读出来。**
+
+## 零、先确保数据目录存在
+
+**在问任何问题之前做这一步。** 数据目录默认 `~/.pr-merged/`，所有执行记录都在那里。
+
+```bash
+python scripts/prtool.py init
+```
+
+它会从 skill 包的 `_seed/` 拷出骨架（`preferences.md`、`lessons.md`、`conventions/`、`projects/`、`state/`），**已存在的文件不覆盖**，重复跑是安全的。
+
+如果用户想放别的位置，用 `--data <路径>` 或设环境变量 `PR_MERGED_HOME`。定了之后告诉用户：「以后所有记录都在 `<路径>`，换 agent 也是这一份。」
+
+**检查是否已经初始化过**：
+
+```bash
+python scripts/prtool.py check
+```
+
+输出里会分两段——「skill 包」和「数据目录」。数据目录不存在就是没初始化过。
 
 ## 一、先判断是哪一级初始化
 
 | 情况 | 做什么 |
 | --- | --- |
-| 没有 `preferences.md` | 做**全局初始化**（本文第二到四节），只做一次 |
+| 数据目录没建，或没有 `preferences.md` | 做**全局初始化**（本文第二到四节），只做一次 |
 | 有 `preferences.md`，但要加新项目 | 跳过本文，直接读 `references/onboard-project.md` |
 | 用户说「改一下止损线」 | 只改 `preferences.md` 对应行，标日期 |
 

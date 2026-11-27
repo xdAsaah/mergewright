@@ -44,7 +44,7 @@
 
 `pr-merged` 就是一个符合 agent skill 规范的普通目录：`SKILL.md` + YAML frontmatter（`name` + `description`）+ 同目录引用文件。不用构建，没有依赖要装。
 
-clone 到你所用 agent 的 skills 目录下：
+**第 1 步** — clone 到你所用 agent 的 skills 目录下：
 
 ```bash
 git clone https://github.com/xdAsaah/pr-merged.git <你的-agent-skills-目录>/pr-merged
@@ -61,7 +61,34 @@ git clone https://github.com/xdAsaah/pr-merged.git <你的-agent-skills-目录>/
 
 不在表里的话，查你所用 agent 的文档找 skills 目录，结构都是一样的。
 
+**第 2 步** — 建数据目录：
+
+```bash
+python <你的-agent-skills-目录>/pr-merged/scripts/prtool.py init
+```
+
+会在 `~/.pr-merged/` 建好档案骨架。已存在的文件不会覆盖，重复跑是安全的。
+
 **只要方法、不要记忆功能？** 只拷 `SKILL.md` 和 `references/` 即可，它们不依赖状态文件。
+
+## 你的记录存在哪
+
+**skill 包和数据是两个目录，这是故意的。**
+
+| | 位置 | 说明 |
+| --- | --- | --- |
+| **skill 包** | 你 clone 的地方 | 只读。升级用 `git pull`。每个 agent 各一份 |
+| **数据目录** | 默认 `~/.pr-merged/` | 唯一。所有执行记录都在这里，**所有 agent 共用同一份** |
+
+为什么重要：你可能同时在 Trae、Claude Code、Codex 里都装了这个 skill。如果记录跟着包走，切到另一个 agent 就是一份空档案——前面查过什么、排除过什么、提过什么全不知道。分开之后，不管用哪个 agent，打开的都是同一份历史。
+
+换位置用 `--data <路径>` 或环境变量 `PR_MERGED_HOME`：
+
+```bash
+PR_MERGED_HOME=/path/to/archive python scripts/prtool.py check
+```
+
+包里的 `_seed/` 是空模板，`init` 从这里拷。**不要直接改 `_seed/` 里的文件**——那是模板。
 
 ## 首次使用
 
@@ -176,12 +203,11 @@ python scripts/prtool.py issues --repo owner/repo
 ## 目录
 
 ```
-pr-merged/
-├── SKILL.md              入口，路由表 + 硬规则 + 会话流程
-├── preferences.md        你的跨项目偏好（首次使用后填写）
-├── lessons.md            你踩过的坑，带升级路径
+pr-merged/                ← skill 包（只读，每个 agent 一份）
+├── SKILL.md              入口：路由表、硬规则、会话流程
+├── README.md / README.zh.md
 ├── references/           方法层，9 个文件
-│   ├── init.md           首次使用：3 个问题 + 身份检查
+│   ├── init.md           首次使用：建数据目录、3 个问题、身份检查
 │   ├── onboard-project.md 进新仓库：推导规则 + 观察维护者
 │   ├── choose-project.md 选项目：评分卡 + 统计陷阱
 │   ├── hunt-candidate.md 找候选：7 种扫描手法
@@ -190,23 +216,27 @@ pr-merged/
 │   ├── follow-up.md      跟进：review 风格 + 止损
 │   ├── severe-scan.md    严重 bug：不变量 + 攻击面矩阵
 │   └── first-pr.md       首 PR 与阶段策略
-├── conventions/
-│   └── _TEMPLATE.md      规则文件模板
-├── projects/
-│   ├── _index.md         项目一览（空表头）
-│   └── _template/        项目档案模板（profile / ledger / candidates / excluded / issues）
-├── state/
-│   ├── prs.jsonl         PR 事件流水
-│   └── scans.jsonl       扫描流水
-└── scripts/              6 个 Python 子命令 + 3 个 PowerShell 等价实现
+├── scripts/              6 个 Python 子命令 + 3 个 PowerShell 等价实现
+└── _seed/                空模板，由 init 拷到数据目录
+    ├── preferences.md
+    ├── lessons.md
+    ├── conventions/_TEMPLATE.md
+    ├── projects/_index.md + _template/（profile/ledger/candidates/excluded/issues）
+    └── state/prs.jsonl + scans.jsonl
+
+~/.pr-merged/             ← 你的数据（所有 agent 共用）
+├── preferences.md
+├── lessons.md
+├── conventions/<项目>.md
+├── projects/_index.md + <项目>/
+└── state/*.jsonl
 ```
 
-## 关于仓库里的空文件
+## 关于 `_seed/`
 
-`preferences.md`、`lessons.md`、`projects/_index.md`、`state/*.jsonl` 在仓库里都是**空模板**。
-它们是给你 clone 下来之后填的，不会包含作者的个人数据。
+`_seed/` 里的模板由 `init` 拷到你的数据目录，永远不含作者的个人数据。
 
-如果你直接在这个目录里使用 skill，建议取消 `.gitignore` 末尾那些注释掉的规则，避免把自己的私人数据提交上去。
+**不要直接改 `_seed/` 里的文件**——它是以后 `init` 拷贝的来源。要改就改 `~/.pr-merged/` 下你自己的那份。
 
 ## License
 

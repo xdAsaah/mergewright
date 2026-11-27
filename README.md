@@ -44,7 +44,7 @@ A multi-file directory that follows the agent skill convention:
 
 `pr-merged` is a plain directory following the agent skill convention: `SKILL.md` with YAML frontmatter (`name` + `description`), plus files referenced from the same directory. No build step, no dependencies to install.
 
-Clone it into your agent's skills directory:
+**Step 1** — clone it into your agent's skills directory:
 
 ```bash
 git clone https://github.com/xdAsaah/pr-merged.git <your-agent-skills-dir>/pr-merged
@@ -61,7 +61,34 @@ Common skills directories:
 
 If your agent is not listed, check its docs for the skills directory — the layout is the same everywhere.
 
+**Step 2** — create the data directory:
+
+```bash
+python <your-agent-skills-dir>/pr-merged/scripts/prtool.py init
+```
+
+This creates `~/.pr-merged/` with the archive skeleton. Existing files are never overwritten, so re-running is safe.
+
 **Only need the method, not the memory?** Copy `SKILL.md` and `references/` alone. They have no dependency on the state files.
+
+## Where your work lives
+
+**The skill package and your data are two separate directories.** This is deliberate.
+
+| | Location | Notes |
+| --- | --- | --- |
+| **Skill package** | Wherever you cloned it | Read-only. Upgrade with `git pull`. One copy per agent |
+| **Data directory** | `~/.pr-merged/` by default | Single. All execution records live here, **shared across every agent** |
+
+Why it matters: you may have the skill installed under Trae, Claude Code, and Codex at the same time. If your records lived inside the package, switching agents would show you an empty archive — no memory of what you already investigated, excluded, or submitted. With the data directory split out, every agent opens the same history.
+
+Override the location with `--data <path>` or the `PR_MERGED_HOME` environment variable:
+
+```bash
+PR_MERGED_HOME=/path/to/archive python scripts/prtool.py check
+```
+
+The package's `_seed/` holds the blank templates. Do not edit files there — they are what `init` copies from.
 
 ## First run
 
@@ -86,6 +113,7 @@ It checks whether git is installed, whether you are logged in, and whether your 
 ## Commands
 
 ```bash
+python scripts/prtool.py init
 python scripts/prtool.py status  --repo owner/repo --author your-username
 python scripts/prtool.py issues  --repo owner/repo
 python scripts/prtool.py onboard --path <local-repo>
@@ -96,12 +124,15 @@ python scripts/prtool.py whoami
 
 | Subcommand | What it does |
 | --- | --- |
+| `init` | Creates the data directory from `_seed/`; never overwrites existing files |
 | `status` | Computes merge rate, open backlog, and channel activity live; groups your PRs by type; supports GitHub and GitLab |
 | `issues` | Scans open issues and flags: beginner-friendly / PR welcome / long unfixed / assigned / open PR exists / merged but unclosed / related PR / multiple failed PRs |
 | `onboard` | Reads a local repo and derives commit convention, test commands, PR template, and more |
-| `append` | Appends one event to a JSONL ledger |
-| `check` | Self-checks the archive: dead links, missing dirs, broken JSON, required sections, hand-written numbers |
+| `append` | Appends one event to a JSONL ledger (relative paths resolve against the data directory) |
+| `check` | Self-checks both the package and the data archive |
 | `whoami` | Checks commit identity, covering missing git / not logged in / real email |
+
+`init`, `append`, and `check` accept `--data <path>` to point at a different archive.
 
 Only the Python 3.8+ standard library, no third-party packages. Credentials come from `git credential`; never written to disk, never echoed.
 
@@ -176,12 +207,11 @@ Then it **asks you which type to do this time**. It does not decide for you. Can
 ## Layout
 
 ```
-pr-merged/
+pr-merged/                ← skill package (read-only, one per agent)
 ├── SKILL.md              Entry point: routing table, hard rules, session flow
-├── preferences.md        Your cross-project preferences (filled after first run)
-├── lessons.md            Your own pitfalls, with an escalation path
+├── README.md / README.zh.md
 ├── references/           Method layer, 9 files
-│   ├── init.md           First run: 3 questions + identity check
+│   ├── init.md           First run: create data dir, 3 questions, identity check
 │   ├── onboard-project.md Entering a repo: derive rules + observe the maintainer
 │   ├── choose-project.md Choosing a project: scorecard + statistical traps
 │   ├── hunt-candidate.md Hunting candidates: 7 scanning techniques
@@ -190,23 +220,27 @@ pr-merged/
 │   ├── follow-up.md      Following up: review styles + stop-loss
 │   ├── severe-scan.md    Severe bugs: invariants + attack-surface matrix
 │   └── first-pr.md       First PR and stage strategy
-├── conventions/
-│   └── _TEMPLATE.md      Rules file template
-├── projects/
-│   ├── _index.md         Project overview (empty table)
-│   └── _template/        Project archive templates (profile / ledger / candidates / excluded / issues)
-├── state/
-│   ├── prs.jsonl         PR event stream
-│   └── scans.jsonl       Scan stream
-└── scripts/              6 Python subcommands + 3 PowerShell equivalents
+├── scripts/              6 Python subcommands + 3 PowerShell equivalents
+└── _seed/                Blank templates, copied by `init`
+    ├── preferences.md
+    ├── lessons.md
+    ├── conventions/_TEMPLATE.md
+    ├── projects/_index.md + _template/ (profile/ledger/candidates/excluded/issues)
+    └── state/prs.jsonl + scans.jsonl
+
+~/.pr-merged/             ← your data (shared by every agent)
+├── preferences.md
+├── lessons.md
+├── conventions/<project>.md
+├── projects/_index.md + <project>/
+└── state/*.jsonl
 ```
 
-## About the empty files
+## About `_seed/`
 
-`preferences.md`, `lessons.md`, `projects/_index.md`, and `state/*.jsonl` are **empty templates** in the repo.
-They are meant to be filled in after you clone it; they never contain the author's personal data.
+The templates in `_seed/` are copied to your data directory by `init`. They never contain the author's personal data.
 
-If you use the skill directly inside this directory, uncomment the rules at the bottom of `.gitignore` so you do not accidentally commit your own private data.
+Do not edit files inside `_seed/` — they are the source that future `init` runs copy from. Edit your own copies under `~/.pr-merged/` instead.
 
 ## License
 

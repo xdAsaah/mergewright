@@ -9,14 +9,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# 使用者自己的运行数据。
-# 这个仓库是「分发包源码」，空模板要提交；但如果你在本目录里直接用这个 skill，
-# 下面这些文件会变成你的私人数据，取消注释避免误提交。
-# preferences.md
-# lessons.md
-# conventions/*.md
-# !conventions/_TEMPLATE.md
-# projects/*/
-# !projects/_index.md
-# !projects/_template/
-# state/*.jsonl
+# 运行数据不在这个仓库里。
+# 所有个人记录（preferences / lessons / conventions / projects / state）
+# 都写在数据目录 ~/.pr-merged/，由 `prtool.py init` 从 _seed/ 拷出。
+# 所以这个仓库里不会出现你的私人数据，不需要额外忽略规则。
