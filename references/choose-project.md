@@ -5,7 +5,7 @@
 
 ## 一、先算三个硬指标
 
-用 `scripts/prtool.py status --repo <owner/repo>` 取数，别看纸面合并率。
+用 `scripts/prtool.py status --repo <owner/repo>` 取数，别看纸面合并率。**一次 3 次请求 + 每个 open PR 一次评论**（open PR 多的时候加 `--no-comments`）；已关闭 PR 一次拉 100 个，外部合并率看最近 20 个，外部作者数看这 100 个。
 
 | 指标 | 算法 | 门槛 |
 | --- | --- | --- |

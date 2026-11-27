@@ -101,6 +101,7 @@ python scripts/prtool.py where --project <项目>
 8. **每次会话都要先定 PR 类型再挖候选**，不要挖完一堆再问用户要不要。类型只用五类：`fix` / `test` / `feat` / `perf` / `docs`。**例外**：`candidates.md` 的进行中/待提/待验证档已有内容时，直接接手或汇报，不重新问类型。
 9. **先看已有候选，再挖新的。** 已经动手或挖出来、证据齐的候选，优先级高于任何新方向。
 10. **用户基于你的结论批准动作时，动手前先复核那个结论。** 结论在你自己手里时是判断，错了代价为零；用户一旦据此批准，它就是行动依据，错了烧的是他的信誉和一个 PR 号。**凡「没有守护 / 没有测试 / 不存在」这类否定判断，复核时必须按文件名定位、整段读过对应测试文件**——搜索没命中不等于不存在，被截断的检索结果更不能当证据。细则见 `references/verify.md` 第八节。
+11. **取数只走带 token 的通道。** `api.github.com` 的匿名额度只有 **60 次/小时/IP**，认证是 5000 次/小时；而 `web_fetch` 这类抓取工具加不了 `Authorization` 头，用它拉 API 等于匿名，一轮"按仓取数 + 逐个 PR 深读"就能把额度吃光。取数只准用三种：`scripts/prtool.py`（自带 token）、`gh api` / `gh pr view`、本地 `git`。**额度耗尽时 `prtool.py` 直接报错退出（退出码 2），此时数据是缺的，绝不能据此判断「仓库没有 PR」「项目停收了」。** 各命令的请求成本见「脚本」一节的表。
 
 ## 路由表
 
@@ -122,6 +123,8 @@ python scripts/prtool.py where --project <项目>
 | **从 issue 里找候选** | `references/hunt-candidate.md` 第 7 种手法 |
 | **判断要不要先开 issue** | `conventions/<项目>.md` 的 3.2「issue 政策」 |
 | **扫某项目 open issue** | `scripts/prtool.py issues --repo owner/repo` |
+| **读某个 PR 的详情 / 评论 / review / 行内意见** | `scripts/prtool.py pr <PR 链接或 owner/repo#12>`（1 次请求拿全） |
+| **取表里没有的 GitHub API 数据** | `scripts/prtool.py api /repos/...`（带 token；禁止手搓匿名请求） |
 | 查某项目当前 PR 状态与合并率 | `scripts/prtool.py status`（或 `scripts/pr-status.ps1`） |
 | **踩到一个坑，判断该记在哪** | `lessons.md` 第一节（判据）+ 第三节（贡献教训）/ 第四节（工具障碍） |
 | **检查档案有没有坏（死链、手写数字、坏 JSON）** | `scripts/prtool.py check` |
@@ -206,7 +209,7 @@ python scripts/prtool.py where --project <项目>
 
 ## 脚本
 
-**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），八个子命令齐全。
+**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），十个子命令齐全，全部从 `git credential` 取 token。
 
 ```bash
 # 建数据目录（只需一次；已存在的文件不覆盖）
@@ -217,6 +220,14 @@ python scripts/prtool.py status --repo owner/repo --author 你的用户名
 
 # 扫 open issue，标新手友好 / 已有 PR 在审 / PR 坟场等
 python scripts/prtool.py issues --repo owner/repo
+
+# 读一个 PR：详情 + 对话评论 + review + 行内线程 + 改动文件，一次 GraphQL
+python scripts/prtool.py pr https://github.com/owner/repo/pull/12
+python scripts/prtool.py pr owner/repo#12 --json      # 机器读
+
+# 通用带 token 的 GET：所有 api.github.com 取数都走这里，别手搓匿名请求
+python scripts/prtool.py api /rate_limit
+python scripts/prtool.py api /repos/owner/repo/pulls/12/comments
 
 # 追加一条事件到 JSONL 台账（相对路径按数据目录解析）
 python scripts/prtool.py append --file state/prs.jsonl --json '{"ts":"2026-11-27T02:10:00Z","project":"<项目>","pr":123,"status":"merged"}'
@@ -235,15 +246,30 @@ python scripts/prtool.py check
 python scripts/prtool.py whoami
 ```
 
+**每条命令花掉几次 API 额度**（认证 5000 次/小时；匿名只有 60，所以别手搓）：
+
+| 命令 | 请求次数 |
+| --- | --- |
+| `status`（open PR 有 N 个） | 3 + N；加 `--no-comments` 就是 3 |
+| `status --author` | 上面 + 1（search 走单独额度，30 次/分钟） |
+| `issues`（默认 `--linked-limit 15`） | 1 + 15 = 16；`--no-linked` 是 1；`--linked-limit 6` 是 7 |
+| `pr <PR>` | 1（GraphQL 一次拿详情/评论/review/行内/文件） |
+| `api <path>` | 1，`?per_page=100` 也只算 1 |
+| `where` / `onboard` / `append` / `check` / `init` / `whoami`（配置齐全时） | 0 |
+
+额度低于 50 时会先警告；真打满则**直接以退出码 2 中止**，不会返回半截空数据。
+
 `append` / `check` / `init` / `onboard` / `where` 都接受 `--data <路径>`，用来临时指向别的数据目录。
 
-**没有 Python 时**用 `scripts/*.ps1`（Windows PowerShell 5.1），但**只有三个子命令**，`init` / `issues` / `check` / `whoami` / `where` 都没有对应实现：
+**没有 Python 时**用 `scripts/*.ps1`（Windows PowerShell 5.1），但**只有三个子命令**，`init` / `issues` / `check` / `whoami` / `where` / `api` / `pr` 都没有对应实现：
 
 ```powershell
 .\scripts\pr-status.ps1 -Repo owner/repo -Author 你的用户名
 .\scripts\append.ps1 -File state/prs.jsonl -Json '{"ts":"...","project":"<项目>","pr":123}'
 .\scripts\onboard.ps1 -Path <本地仓库路径>
 ```
+
+`api` / `pr` 的替代是 `gh`（同一个 token、同样吃 5000 额度）：`gh api /repos/owner/repo/pulls/12/comments`、`gh pr view 12 --repo owner/repo --comments`。**别退回到网页/匿名抓取**，那样就是 60 次/小时。
 
 这种情况下，`init` 需要手动建目录（从 skill 包的 `_seed/` 拷到 `~/.mergewright/`），`where` 要手动看 `state/workspaces.jsonl`，`check` 和 `whoami` 的检查项也要手动做：`check` 见下方清单，`whoami` 见 `references/init.md` 第三节的「手动设置」。
 

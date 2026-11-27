@@ -150,6 +150,8 @@ python scripts/prtool.py issues  --repo owner/repo
 python scripts/prtool.py onboard --path <本地仓库>
 python scripts/prtool.py where   --project <项目> [--path <本地仓库>]
 python scripts/prtool.py append  --file state/prs.jsonl --json '{...}'
+python scripts/prtool.py pr      https://github.com/owner/repo/pull/12
+python scripts/prtool.py api     /repos/owner/repo/pulls/12/comments
 python scripts/prtool.py check
 python scripts/prtool.py whoami
 ```
@@ -159,6 +161,8 @@ python scripts/prtool.py whoami
 | `init` | 从 `_seed/` 建数据目录骨架；已存在的文件不覆盖 |
 | `status` | 现算合并率、open 积压、通道活性，按 PR 类型分组统计；支持 GitHub / GitLab |
 | `issues` | 扫 open issue，标新手友好 / 欢迎 PR / 长期未修 / 已认领 / 已有 PR 在审 / 已修待确认 / 有相关 PR / 多 PR 未合 |
+| `pr` | 一次 GraphQL 拿一个 PR 的详情、对话评论、review、行内线程、改动文件 |
+| `api` | 带 token 的通用 GET：表里没有的数据都走这里，别手搓匿名请求 |
 | `onboard` | 读本地仓库，推导出 commit 规范、测试命令、PR 模板等；同时记下工作副本路径 |
 | `where` | 查/记某个项目的代码在本机哪个目录；标出路径缺失、remote 不符、别的机器 |
 | `append` | 往 JSONL 台账追加一条事件 |
@@ -169,7 +173,7 @@ python scripts/prtool.py whoami
 
 `init` / `append` / `check` / `onboard` / `where` 都接受 `--data <路径>`，指向别的数据目录。
 
-`scripts/*.ps1` 是 Windows PowerShell 的等价实现，但只覆盖 `status` / `onboard` / `append` 三个子命令，**没有 `init`、`issues`、`check`、`whoami`、`where`**。
+`scripts/*.ps1` 是 Windows PowerShell 的等价实现，但只覆盖 `status` / `onboard` / `append` 三个子命令，**没有 `init`、`issues`、`check`、`whoami`、`where`、`api`、`pr`**；后两个用 `gh api` / `gh pr view` 代替（同一个 token）。
 
 ## 硬规则
 
@@ -181,6 +185,7 @@ python scripts/prtool.py whoami
 4. **数字不要手写**：合并率一律由 `status` 现算
 5. **每次会话结束必须回填**档案，不写等于白做
 6. **每次会话先定 PR 类型再挖候选**，不要挖完再问。类型只有五类：`fix` / `test` / `feat` / `perf` / `docs`
+7. **取数只走带 token 的通道**（`prtool.py` / `gh`）：匿名额度只有 60 次/小时，而抓取类工具加不了 `Authorization` 头。额度打满时脚本以退出码 2 中止，**不会返回"仓库没有 PR"这种半截空数据**
 
 ## 下一步做什么（五档优先级）
 
@@ -257,7 +262,7 @@ mergewright/              ← skill 包（只读，每个 agent 一份）
 │   ├── follow-up.md      跟进：review 风格 + 止损
 │   ├── severe-scan.md    严重 bug：不变量 + 攻击面矩阵
 │   └── first-pr.md       首 PR 与阶段策略
-├── scripts/              8 个 Python 子命令 + 3 个 PowerShell 等价实现
+├── scripts/              10 个 Python 子命令 + 3 个 PowerShell 等价实现
 └── _seed/                空模板，由 init 拷到数据目录
     ├── preferences.md
     ├── lessons.md

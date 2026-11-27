@@ -91,16 +91,158 @@ def days_since(value):
     return round((datetime.now(timezone.utc) - t).total_seconds() / 86400, 1)
 
 
+# ---------------------------------------------------------------- 取数通道
+
+# 匿名额度只有 60 次/小时，认证 5000 次/小时。额度耗尽时**必须停机**：
+# 把 403 当成普通失败、返回空列表，会让「仓库没有 PR」「项目停收了」这类
+# 判断直接做反，而且看起来毫无异常。
+RATE_WARNED = False
+RATE_LOW = 50
+
+
+class RateLimitExhausted(Exception):
+    """额度用尽（primary 或 secondary）。api_get / api_post 抛出，main 统一收口。"""
+
+    def __init__(self, url, headers, code):
+        self.url = url
+        self.code = code
+        self.remaining = (header_get(headers, "x-ratelimit-remaining")
+                          or header_get(headers, "ratelimit-remaining"))
+        self.limit = (header_get(headers, "x-ratelimit-limit")
+                      or header_get(headers, "ratelimit-limit"))
+        self.reset = (header_get(headers, "x-ratelimit-reset")
+                      or header_get(headers, "ratelimit-reset"))
+        self.retry_after = header_get(headers, "retry-after")
+        super().__init__(f"rate limited: {url}")
+
+
+def header_get(headers, name):
+    """大小写不敏感地读响应头；headers 可能是 HTTPMessage，也可能是 dict。"""
+    if headers is None:
+        return None
+    try:
+        v = headers.get(name)
+    except Exception:
+        v = None
+    if v is not None:
+        return v
+    try:
+        for k, val in dict(headers).items():
+            if str(k).lower() == name.lower():
+                return val
+    except Exception:
+        return None
+    return None
+
+
+def reset_text(epoch):
+    """UTC epoch 秒 -> 本地时间字符串。"""
+    if not epoch:
+        return "未知"
+    try:
+        return datetime.fromtimestamp(int(epoch)).strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "未知"
+
+
+def note_rate(headers):
+    """剩余额度偏低时提示一次。只提示，不改结果。
+
+    search 额度天然只有 30 次/分钟，别拿它当告警依据——只看 core / graphql。
+    """
+    global RATE_WARNED
+    if RATE_WARNED:
+        return
+    resource = (header_get(headers, "x-ratelimit-resource") or "").lower()
+    if resource and resource not in ("core", "graphql"):
+        return
+    rem = header_get(headers, "x-ratelimit-remaining")
+    if rem is None:
+        rem = header_get(headers, "ratelimit-remaining")
+    if rem is None:
+        return
+    try:
+        rem = int(rem)
+    except (TypeError, ValueError):
+        return
+    if rem < RATE_LOW:
+        RATE_WARNED = True
+        print(f"注意：API 剩余额度 {rem} 次（{resource or 'core'}），"
+              f"{reset_text(header_get(headers, 'x-ratelimit-reset'))} 重置。"
+              f"大批量取数前先跑 prtool.py api /rate_limit 看一眼。", file=sys.stderr)
+
+
+def is_rate_limit_error(e):
+    """403/429 到底是不是限流？判断不出来就当普通错误，别误伤权限问题。"""
+    h = e.headers
+    rem = header_get(h, "x-ratelimit-remaining")
+    if rem is not None and str(rem).strip() == "0":
+        return True
+    if header_get(h, "retry-after"):
+        return True
+    if e.code == 429:
+        return True
+    try:
+        body = (e.read() or b"").decode("utf-8", "replace")[:800].lower()
+    except Exception:
+        return False
+    return "rate limit" in body and ("secondary" in body or "exceeded" in body)
+
+
 def api_get(url, headers):
     req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
+            note_rate(r.headers)
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
+        if e.code in (403, 429) and is_rate_limit_error(e):
+            raise RateLimitExhausted(url, e.headers, e.code)
         print(f"警告：请求失败 {url} : HTTP {e.code}", file=sys.stderr)
     except Exception as e:
         print(f"警告：请求失败 {url} : {e}", file=sys.stderr)
     return None
+
+
+def api_post(url, headers, payload):
+    """GraphQL 用 POST。错误处理与 api_get 一致。"""
+    body = json.dumps(payload).encode("utf-8")
+    h = dict(headers, **{"Content-Type": "application/json"})
+    req = urllib.request.Request(url, data=body, headers=h, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            note_rate(r.headers)
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429) and is_rate_limit_error(e):
+            raise RateLimitExhausted(url, e.headers, e.code)
+        print(f"警告：GraphQL 请求失败 HTTP {e.code}", file=sys.stderr)
+        try:
+            err = json.loads(e.read().decode("utf-8", "replace"))
+            for m in (err.get("errors") or []):
+                print(f"  {m.get('message')}", file=sys.stderr)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"警告：GraphQL 请求失败 {e}", file=sys.stderr)
+    return None
+
+
+def api_env(platform, site=""):
+    """平台 + 站点 -> (api 根地址, 带 token 的请求头)。拿不到 token 返回 None。"""
+    site = site or ("github.com" if platform == "github" else "gitlab.com")
+    token = get_token(site)
+    if not token:
+        print(f"拿不到 {site} 的 token：先 git credential 登录一次", file=sys.stderr)
+        return None
+    api = "https://api.github.com" if platform == "github" else f"https://{site}/api/v4"
+    if platform == "github":
+        headers = {"Authorization": f"Bearer {token}",
+                   "Accept": "application/vnd.github+json",
+                   "User-Agent": "mergewright"}
+    else:
+        headers = {"PRIVATE-TOKEN": token, "User-Agent": "mergewright"}
+    return api, headers
 
 
 # ---------------------------------------------------------------- 目录约定
@@ -424,19 +566,10 @@ def convert_pull(raw, platform, author):
 
 def cmd_status(args):
     platform = args.platform
-    site = args.site or ("github.com" if platform == "github" else "gitlab.com")
-    token = get_token(site)
-    if not token:
-        print(f"拿不到 {site} 的 token：先 git credential 登录一次", file=sys.stderr)
+    env = api_env(platform, args.site)
+    if not env:
         return 1
-
-    api = "https://api.github.com" if platform == "github" else f"https://{site}/api/v4"
-    if platform == "github":
-        headers = {"Authorization": f"Bearer {token}",
-                   "Accept": "application/vnd.github+json",
-                   "User-Agent": "mergewright"}
-    else:
-        headers = {"PRIVATE-TOKEN": token, "User-Agent": "mergewright"}
+    api, headers = env
 
     proj = urllib.parse.quote(args.repo, safe="")
     repo = args.repo
@@ -466,6 +599,9 @@ def cmd_status(args):
         oldest = ordered[0]
         print(f"  oldest: #{oldest['number']} 等了 {days_since(oldest['created'])} 天 ({oldest['title']})")
         for p in ordered:
+            if args.no_comments:
+                print(f"  #{p['number']} [{p['author']}]  {p['title']}")
+                continue
             if platform == "github":
                 cm = api_get(f"{api}/repos/{repo}/issues/{p['number']}/comments", headers)
             else:
@@ -473,11 +609,11 @@ def cmd_status(args):
             others = [c for c in (cm or []) if (c.get("user") or {}).get("login") != p["author"]]
             print(f"  #{p['number']} [{p['author']}] 他人评论 {len(others)} 条  {p['title']}")
 
-    # 最近 20 个已关闭
+    # 最近 100 个已关闭：外部合并率看最近 20 个，外部作者数看 100 个（见 choose-project.md）
     if platform == "github":
-        raw = api_get(f"{api}/repos/{repo}/pulls?state=closed&per_page=20&sort=updated&direction=desc", headers)
+        raw = api_get(f"{api}/repos/{repo}/pulls?state=closed&per_page=100&sort=updated&direction=desc", headers)
     else:
-        raw = api_get(f"{api}/projects/{proj}/merge_requests?state=closed&per_page=20&order_by=updated_at", headers)
+        raw = api_get(f"{api}/projects/{proj}/merge_requests?state=closed&per_page=100&order_by=updated_at", headers)
     closed = [convert_pull(p, platform, author) for p in (raw or [])]
     if closed:
         human = [p for p in closed if not p["is_bot"]]
@@ -486,7 +622,12 @@ def cmd_status(args):
             external = [p for p in merged if p["assoc"] not in ("MEMBER", "OWNER", "COLLABORATOR")]
         else:
             external = [p for p in merged if p["assoc"] == "OTHER"]
-        print(f"近 20 个已关闭（剔 bot）: {len(human)}  合并 {len(merged)}  外部作者合并 {len(external)}")
+        recent = human[:20]
+        recent_merged = [p for p in recent if p["merged"]]
+        print(f"近 {len(human)} 个已关闭（剔 bot）: 合并 {len(merged)}  外部作者合并 {len(external)}")
+        if recent:
+            print(f"  最近 20 个已关闭: 合并 {len(recent_merged)}/{len(recent)}"
+                  f" = {len(recent_merged) * 100 // len(recent)}%")
         if merged:
             last = max(merged, key=lambda p: as_time(p["merged"]) or datetime.min.replace(tzinfo=timezone.utc))
             print(f"  最近合并: #{last['number']} at {last['merged']}")
@@ -590,19 +731,10 @@ def linked_prs_gitlab(api, proj, iid, headers):
 def cmd_issues(args):
     """扫 open issue，标出 good first issue / 长期未修 / 维护者说 PR welcome 的。"""
     platform = args.platform
-    site = args.site or ("github.com" if platform == "github" else "gitlab.com")
-    token = get_token(site)
-    if not token:
-        print(f"拿不到 {site} 的 token：先 git credential 登录一次", file=sys.stderr)
+    env = api_env(platform, args.site)
+    if not env:
         return 1
-
-    api = "https://api.github.com" if platform == "github" else f"https://{site}/api/v4"
-    if platform == "github":
-        headers = {"Authorization": f"Bearer {token}",
-                   "Accept": "application/vnd.github+json",
-                   "User-Agent": "mergewright"}
-    else:
-        headers = {"PRIVATE-TOKEN": token, "User-Agent": "mergewright"}
+    api, headers = env
 
     repo = args.repo
     proj = urllib.parse.quote(repo, safe="")
@@ -759,6 +891,203 @@ def cmd_issues(args):
         print(f"已有 PR 在审：{len(has_pr)} 个（别重复做）")
         print(f"已修待确认：{len(done)} 个（PR 已合，issue 可能忘关）")
         print(f"多 PR 未合：{len(grave)} 个（≥{args.min_failed_prs} 次尝试失败，先问维护者）")
+    return 0
+
+
+# ---------------------------------------------------------------- api / pr
+
+def cmd_api(args):
+    """带 token 的通用 GET：所有 api.github.com 取数都走这里，不要手搓匿名请求。"""
+    env = api_env(args.platform, args.site)
+    if not env:
+        return 1
+    api, headers = env
+    path = (args.path or "").strip()
+    if not path:
+        print("要给一个路径，如 /repos/owner/repo/pulls/12/comments", file=sys.stderr)
+        return 1
+    if path.startswith(("http://", "https://")):
+        url = path
+    else:
+        url = f"{api}/{path.lstrip('/')}"
+    data = api_get(url, headers)
+    if data is None:
+        return 1
+    print(json.dumps(data, ensure_ascii=False, indent=2))
+    return 0
+
+
+# 一次请求拿全：详情 + 对话评论 + review + 行内 review 线程 + 改动文件。
+# body 用 raw markdown（bodyText 在各评论类型上支持不一致，别赌 schema）。
+PR_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    pullRequest(number: $number) {
+      number
+      title
+      state
+      isDraft
+      merged
+      mergedAt
+      createdAt
+      updatedAt
+      additions
+      deletions
+      changedFiles
+      reviewDecision
+      mergeable
+      mergeStateStatus
+      isCrossRepository
+      baseRefName
+      headRefName
+      headRepository { nameWithOwner }
+      author { login }
+      labels(first: 20) { nodes { name } }
+      body
+      comments(first: 100) {
+        totalCount
+        nodes { author { login } createdAt body }
+      }
+      reviews(first: 50) { nodes { author { login } state submittedAt body } }
+      reviewThreads(first: 50) {
+        nodes {
+          isResolved
+          isOutdated
+          path
+          line
+          comments(first: 20) { nodes { author { login } body } }
+        }
+      }
+      files(first: 100) { nodes { path additions deletions } }
+    }
+  }
+}
+"""
+
+
+def split_pr_target(target):
+    """把 PR 链接 / owner/repo#12 / 纯数字 拆成 (repo, number)。"""
+    s = (target or "").strip()
+    if not s:
+        return "", None
+    m = re.search(r"https?://[^/]+/([^/]+/[^/]+)/(?:pull|pulls|merge_requests|mr)/(\d+)", s)
+    if m:
+        return norm_repo(m.group(1)), int(m.group(2))
+    m = re.match(r"^([\w.\-]+/[\w.\-]+)#(\d+)$", s)
+    if m:
+        return norm_repo(m.group(1)), int(m.group(2))
+    m = re.match(r"^#?(\d+)$", s)
+    if m:
+        return "", int(m.group(1))
+    return norm_repo(s), None
+
+
+def clip(text, n):
+    """压成单行并截断。"""
+    t = re.sub(r"\s+", " ", (text or "").strip())
+    return t if len(t) <= n else t[:n].rstrip() + "…"
+
+
+def clip_block(text, n):
+    """保留换行的截断，给 PR 正文用。"""
+    t = (text or "").strip()
+    return t if len(t) <= n else t[:n].rstrip() + "\n…（已截断）"
+
+
+def print_pr(repo, pr, args):
+    merged = pr.get("merged")
+    state = "merged" if merged else (pr.get("state") or "").lower()
+    head_repo = ((pr.get("headRepository") or {}).get("nameWithOwner") or "?")
+    labels = [n.get("name") for n in ((pr.get("labels") or {}).get("nodes") or [])]
+    print(f"=== {repo}#{pr.get('number')}  {pr.get('title') or ''} ===")
+    when = f"  at {pr.get('mergedAt')}" if merged else ""
+    print(f"state: {state}{when}  draft: {'是' if pr.get('isDraft') else '否'}"
+          f"  author: @{((pr.get('author') or {}).get('login') or '?')}")
+    print(f"labels: {', '.join(labels) or '-'}  "
+          f"reviewDecision: {pr.get('reviewDecision') or '-'}  "
+          f"mergeable: {pr.get('mergeable') or '-'}/{pr.get('mergeStateStatus') or '-'}")
+    cross = "（跨仓库，来自 fork）" if pr.get("isCrossRepository") else ""
+    print(f"base: {pr.get('baseRefName')}  <-  head: {head_repo}:{pr.get('headRefName')} {cross}")
+    print(f"size: +{pr.get('additions')}/-{pr.get('deletions')} · {pr.get('changedFiles')} 个文件")
+
+    body = clip_block(pr.get("body"), args.body_chars)
+    if body:
+        print("\n--- 正文 ---")
+        print(body)
+
+    cm = pr.get("comments") or {}
+    nodes = cm.get("nodes") or []
+    total = cm.get("totalCount") or len(nodes)
+    print(f"\n--- 对话评论 {total} 条（显示 {min(len(nodes), args.max_comments)}）---")
+    for c in nodes[:args.max_comments]:
+        print(f"@{((c.get('author') or {}).get('login') or '?')} [{c.get('createdAt')}] "
+              f"{clip(c.get('body'), args.body_chars)}")
+    if total > len(nodes):
+        print(f"（还有 {total - len(nodes)} 条没拉下来，翻页用 prtool.py api）")
+
+    rv = [r for r in ((pr.get("reviews") or {}).get("nodes") or []) if (r.get("body") or "").strip()]
+    print(f"\n--- review {len(rv)} 条（只列有正文的）---")
+    for r in rv[:args.max_reviews]:
+        print(f"@{((r.get('author') or {}).get('login') or '?')} [{r.get('state')} {r.get('submittedAt')}] "
+              f"{clip(r.get('body'), args.body_chars)}")
+
+    threads = [t for t in ((pr.get("reviewThreads") or {}).get("nodes") or [])
+               if ((t.get("comments") or {}).get("nodes") or [])]
+    unresolved = [t for t in threads if not t.get("isResolved")]
+    print(f"\n--- 行内 review 线程 {len(threads)} 个（未解决 {len(unresolved)}）---")
+    for t in threads[:args.max_threads]:
+        head = ((t.get("comments") or {}).get("nodes") or [{}])[0]
+        loc = f"{t.get('path')}:{t.get('line')}" if t.get("line") else (t.get("path") or "?")
+        mark = "未解决" if not t.get("isResolved") else "已解决"
+        if t.get("isOutdated"):
+            mark += "/已过期"
+        print(f"{loc} [{mark}] "
+              f"@{((head.get('author') or {}).get('login') or '?')}: {clip(head.get('body'), args.body_chars)}")
+
+    files = ((pr.get("files") or {}).get("nodes") or [])
+    print(f"\n--- 改动文件 {len(files)} 个 ---")
+    for f in files[:args.max_files]:
+        print(f"+{f.get('additions')}/-{f.get('deletions')}  {f.get('path')}")
+    if len(files) > args.max_files:
+        print(f"（另有 {len(files) - args.max_files} 个未显示）")
+
+
+def cmd_pr(args):
+    """读一个 PR 的全部上下文，1 次 GraphQL 请求（详情/评论/review/行内/文件）。"""
+    repo, num = split_pr_target(args.target)
+    repo = norm_repo(args.repo) or repo
+    num = args.number or num
+    if not repo or "/" not in repo:
+        print("给个仓库：pr https://github.com/owner/repo/pull/12 或 pr owner/repo#12", file=sys.stderr)
+        return 1
+    if not num:
+        print("给个 PR 号：pr owner/repo#12", file=sys.stderr)
+        return 1
+    env = api_env("github", args.site)
+    if not env:
+        return 1
+    api, headers = env
+    owner, name = repo.split("/", 1)
+    data = api_post(f"{api}/graphql", headers,
+                    {"query": PR_QUERY,
+                     "variables": {"owner": owner, "name": name, "number": num}})
+    if not data:
+        return 1
+    if data.get("errors"):
+        for m in data["errors"]:
+            print(f"GraphQL 错误：{m.get('message')}", file=sys.stderr)
+        return 1
+    pr = (((data.get("data") or {}).get("repository") or {}).get("pullRequest"))
+    if not pr:
+        print(f"读不到 {repo}#{num}：仓库或 PR 不存在，或 token 没权限", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(pr, ensure_ascii=False, indent=2))
+        return 0
+    # GraphQL 回的是大小写正确的全名，别用 norm_repo 小写后的那个
+    full = (((data.get("data") or {}).get("repository") or {}).get("nameWithOwner")) or repo
+    print_pr(full, pr, args)
     return 0
 
 
@@ -1114,8 +1443,13 @@ def cmd_whoami(args):
     if email and "noreply" in email.lower():
         suggested = email
     elif cred_user:
-        info = api_get(f"https://api.github.com/users/{cred_user}",
-                       {"User-Agent": "mergewright"})
+        # 这个查询也要带 token：匿名额度只剩 60 次/小时，不能拿来查用户名下
+        headers = {"User-Agent": "mergewright",
+                   "Accept": "application/vnd.github+json"}
+        token = get_token(host) if host.endswith("github.com") else None
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        info = api_get(f"https://api.github.com/users/{cred_user}", headers)
         uid = str((info or {}).get("id") or "")
         if uid:
             suggested = f"{uid}+{cred_user}@users.noreply.github.com"
@@ -1379,6 +1713,8 @@ def main(argv=None):
     s.add_argument("--author", default="", help="可选，查这个作者的全部 PR")
     s.add_argument("--platform", default="github", choices=["github", "gitlab"])
     s.add_argument("--site", default="", help="自建实例的域名，默认 github.com / gitlab.com")
+    s.add_argument("--no-comments", action="store_true",
+                   help="不拉每个 open PR 的评论，省掉 N 次请求（只有总数时够用）")
     s.set_defaults(func=cmd_status)
 
     o = sub.add_parser("onboard", help="读本地仓库，推导 conventions 能自动填的项")
@@ -1427,8 +1763,41 @@ def main(argv=None):
                    help="多少个已关闭未合并的 PR 算「多 PR 未合」，默认 3")
     i.set_defaults(func=cmd_issues)
 
+    g = sub.add_parser("api", help="带 token 的通用 GET（别手搓匿名请求）")
+    g.add_argument("path", help="如 /repos/owner/repo/pulls/12/comments，也可直接给完整 URL")
+    g.add_argument("--platform", default="github", choices=["github", "gitlab"])
+    g.add_argument("--site", default="", help="自建实例的域名，默认 github.com / gitlab.com")
+    g.set_defaults(func=cmd_api)
+
+    r = sub.add_parser("pr", help="读一个 PR：详情 + 评论 + review + 行内线程 + 文件（1 次 GraphQL）")
+    r.add_argument("target", nargs="?", default="",
+                   help="PR 链接、owner/repo#12，或省略后用 --repo + --number")
+    r.add_argument("--repo", default="", help="owner/repo")
+    r.add_argument("--number", type=int, default=0, help="PR 号")
+    r.add_argument("--site", default="", help="默认 github.com")
+    r.add_argument("--json", action="store_true", help="输出原始 JSON")
+    r.add_argument("--body-chars", type=int, default=1500, help="正文/评论截断长度，默认 1500")
+    r.add_argument("--max-comments", type=int, default=40, help="最多显示多少条对话评论")
+    r.add_argument("--max-reviews", type=int, default=20, help="最多显示多少条 review")
+    r.add_argument("--max-threads", type=int, default=20, help="最多显示多少个行内 review 线程")
+    r.add_argument("--max-files", type=int, default=30, help="最多显示多少个改动文件")
+    r.set_defaults(func=cmd_pr)
+
     args = ap.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except RateLimitExhausted as e:
+        print(file=sys.stderr)
+        print("API 额度用尽，已中止。", file=sys.stderr)
+        print(f"  请求：{e.url}", file=sys.stderr)
+        print(f"  HTTP {e.code}  remaining={e.remaining}  limit={e.limit}", file=sys.stderr)
+        if e.retry_after:
+            print(f"  retry-after={e.retry_after} 秒（二级限流，退避后再来）", file=sys.stderr)
+        else:
+            print(f"  额度重置：{reset_text(e.reset)}（本地时间，UTC epoch {e.reset}）", file=sys.stderr)
+        print("这次拿到的数据是缺的，不要当成「仓库没有 PR」「项目停收了」。", file=sys.stderr)
+        print("等重置后重跑；临时取单条可以先 gh api（同一个 token）。", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

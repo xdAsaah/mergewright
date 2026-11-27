@@ -94,6 +94,8 @@ python scripts/prtool.py issues --repo owner/repo
 
 关联 PR 通过 timeline / cross-reference 查询，默认只查前 15 个（`--linked-limit`），每个多一次请求。不想查用 `--no-linked`。「多 PR 未合」的阈值用 `--min-failed-prs` 调，默认 3。
 
+**成本**：默认一次 `issues` 是 1（搜 issue）+ 15（timeline）= 16 次请求；`--linked-limit 6` 是 7 次。先用 `--no-linked` 摸一遍全貌，锁定要做的几个再加 `--linked-limit`。失败 PR 的评论别一个个手抓，用 `scripts/prtool.py pr <PR 链接>` 一次拿全（详情 + 评论 + review + 行内意见）。
+
 **「已有 PR 在审」和「已修待确认」是省时间的关键标记**——没有它，你可能会花半天做出一个已经有人做完的修复。
 
 ### PR 坟场怎么处理

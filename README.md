@@ -147,6 +147,8 @@ It checks whether git is installed, whether you are logged in, and whether your 
 python scripts/prtool.py init
 python scripts/prtool.py status  --repo owner/repo --author your-username
 python scripts/prtool.py issues  --repo owner/repo
+python scripts/prtool.py pr      https://github.com/owner/repo/pull/12
+python scripts/prtool.py api     /repos/owner/repo/pulls/12/comments
 python scripts/prtool.py onboard --path <local-repo>
 python scripts/prtool.py where   --project <project> [--path <local-repo>]
 python scripts/prtool.py append  --file state/prs.jsonl --json '{...}'
@@ -159,6 +161,8 @@ python scripts/prtool.py whoami
 | `init` | Creates the data directory from `_seed/`; never overwrites existing files |
 | `status` | Computes merge rate, open backlog, and channel activity live; groups your PRs by type; supports GitHub and GitLab |
 | `issues` | Scans open issues and flags: beginner-friendly / PR welcome / long unfixed / assigned / open PR exists / merged but unclosed / related PR / multiple failed PRs |
+| `pr` | Fetches one PR in a single GraphQL request: body, conversation comments, reviews, inline review threads, changed files |
+| `api` | Authenticated generic GET, for data the other subcommands do not expose; never hand-roll anonymous requests |
 | `onboard` | Reads a local repo and derives commit convention, test commands, PR template, and more; records the checkout path |
 | `where` | Looks up or records where a project's checkout lives on each machine; flags missing paths and remote mismatches |
 | `append` | Appends one event to a JSONL ledger (relative paths resolve against the data directory) |
@@ -169,7 +173,7 @@ python scripts/prtool.py whoami
 
 Only the Python 3.8+ standard library, no third-party packages. Credentials come from `git credential`; never written to disk, never echoed.
 
-`scripts/*.ps1` are Windows PowerShell equivalents, but they cover only `status` / `onboard` / `append`. **They do not include `init`, `issues`, `check`, `whoami`, or `where`.**
+`scripts/*.ps1` are Windows PowerShell equivalents, but they cover only `status` / `onboard` / `append`. **They do not include `init`, `issues`, `check`, `whoami`, `where`, `api`, or `pr`** — use `gh api` / `gh pr view` for the last two.
 
 ## Hard rules
 
@@ -181,6 +185,7 @@ A few constraints cannot be bypassed:
 4. **Never hand-write numbers**: merge rates always come from `status`
 5. **Every session ends by writing back** to the archive; unwritten work is wasted work
 6. **Every session decides the PR type before hunting candidates**, not after. Only five types: `fix` / `test` / `feat` / `perf` / `docs`
+7. **Only fetch data over an authenticated channel** (`prtool.py` / `gh`). Unauthenticated quota is 60 requests/hour/IP, and scraping tools cannot send an `Authorization` header. When the quota is exhausted the script aborts with exit code 2 instead of returning an empty "this repo has no PRs"
 
 ## What to do next (five tiers)
 
@@ -257,7 +262,7 @@ mergewright/              ← skill package (read-only, one per agent)
 │   ├── follow-up.md      Following up: review styles + stop-loss
 │   ├── severe-scan.md    Severe bugs: invariants + attack-surface matrix
 │   └── first-pr.md       First PR and stage strategy
-├── scripts/              8 Python subcommands + 3 PowerShell equivalents
+├── scripts/              10 Python subcommands + 3 PowerShell equivalents
 └── _seed/                Blank templates, copied by `init`
     ├── preferences.md
     ├── lessons.md
