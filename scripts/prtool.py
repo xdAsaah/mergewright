@@ -1209,6 +1209,92 @@ def cmd_closed(args):
     return 0
 
 
+# 仓库自建的 CI 门禁：pytest + ruff 覆盖不到，开 PR 前必须本地跑
+GUARD_RE = re.compile(
+    r"(?:scripts/check_[\w./-]+|scripts/[\w./-]*guard[\w./-]*|dev/[\w./-]*check[\w./-]*"
+    r"|make\s+(?:lint|type-?check)[\w-]*|pyrefly\s+check)"
+)
+
+
+def workflow_ci_rows(root, max_rows=40):
+    """从 `.github/workflows` 按 job → step 抽 `run:` 命令，返回 [(file, job, step, cmd)]。
+
+    只用标准库，不引 YAML：按缩进做最小解析（jobs 下的 job 名、step 的 name、run 的内联值
+    或 `|` / `>` 块）。目的是把「CI 到底跑哪些命令」变成可抄的清单——PR 模板里的
+    checklist 常常只写 `make lint`，会漏掉仓库自建的 guard 脚本。
+    """
+    wf_dir = os.path.join(root, ".github", "workflows")
+    if not os.path.isdir(wf_dir):
+        return []
+    rows = []
+    for fn in sorted(os.listdir(wf_dir)):
+        if not fn.endswith((".yml", ".yaml")):
+            continue
+        try:
+            with open(os.path.join(wf_dir, fn), encoding="utf-8", errors="replace") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            continue
+        in_jobs = False
+        jobs_indent = 0
+        job = step = None
+        run_indent = None
+        for line in lines:
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            indent = len(line) - len(line.lstrip())
+            s = line.strip()
+            if s.startswith("jobs:"):
+                in_jobs, jobs_indent = True, indent
+                continue
+            if not in_jobs:
+                continue
+            if indent <= jobs_indent and re.match(r"^[\w.-]+:\s*$", s):
+                in_jobs = False
+                continue
+            m = re.match(r"^([\w.-]+):\s*$", s)
+            if m and indent == jobs_indent + 2:
+                job, step, run_indent = m.group(1), None, None
+                continue
+            m = re.match(r"^-\s*name:\s*(.+)$", s)
+            if m and job:
+                step, run_indent = m.group(1).strip().strip("\"'"), None
+                continue
+            if s.startswith("run:"):
+                val = s[4:].strip()
+                if val and val not in ("|", ">", "|-", ">-"):
+                    rows.append((fn, job or "-", step or "-", val))
+                    run_indent = None
+                else:
+                    run_indent = indent
+                continue
+            if run_indent is not None:
+                if indent > run_indent:
+                    if s and s not in ("|", ">"):
+                        rows.append((fn, job or "-", step or "-", s))
+                else:
+                    run_indent = None
+
+    # 多行 run 块里的 shell 关键字、续行参数不是命令，别抄进 conventions
+    noise = re.compile(r"^(?:fi|done|else|then|esac|do|\{|\}|shell:.*|#.*)$|^--?[\w-]+|\bthen$|\\$")
+    rows = [r for r in rows if not noise.search(r[3])]
+    rows = list(dict.fromkeys(rows))
+
+    def score(row):
+        cmd = row[3]
+        s = 0
+        if GUARD_RE.search(cmd):
+            s -= 100
+        if re.search(r"\b(?:pytest|pyrefly|ruff|type-?check|lint)\b", cmd):
+            s -= 20
+        if re.match(r"^(?:uv |make |npm |pnpm |vp |yarn )", cmd):
+            s -= 10
+        return s
+
+    rows.sort(key=score)  # 稳定排序：同分保持工作流文件顺序
+    return rows[:max_rows]
+
+
 # ---------------------------------------------------------------- onboard
 
 def cmd_onboard(args):
@@ -1336,20 +1422,27 @@ def cmd_onboard(args):
     elif os.path.isfile(os.path.join(root, "Makefile")):
         print("| 可用检查命令 | make test（见 Makefile） | [推导] |")
 
-    wf_dir = os.path.join(root, ".github", "workflows")
-    if os.path.isdir(wf_dir):
-        runs = []
-        for f in sorted(os.listdir(wf_dir)):
-            if not f.endswith((".yml", ".yaml")):
-                continue
-            try:
-                with open(os.path.join(wf_dir, f), encoding="utf-8", errors="replace") as fh:
-                    runs += [mm.group(1).strip() for mm in re.finditer(r"run:\s*(.+)", fh.read())]
-            except OSError:
-                pass
-        if runs:
-            uniq = list(dict.fromkeys(runs))[:6]
-            print(f"| CI 实际命令 | {' ; '.join(uniq)} | [推导] .github/workflows |")
+    ci_rows = workflow_ci_rows(root)
+    if ci_rows:
+        print()
+        print("### CI 门禁（逐 job 抄自 `.github/workflows`，开 PR 前本地必跑）")
+        print()
+        print("| 工作流 / job | 步骤 | run 命令 |")
+        print("| --- | --- | --- |")
+        for fn, job, step, cmd in ci_rows:
+            print(f"| {fn} / {job} | {step} | `{cmd}` |")
+        guards = [r for r in ci_rows if GUARD_RE.search(r[3])]
+        if guards:
+            print()
+            print("**上面带 `check_*` / `*-guard*` / `make type-check*` 的是仓库自建门禁，"
+                  "`pytest` + `ruff` 不覆盖：**")
+            for _, job, step, cmd in guards:
+                print(f"- `{cmd}`（{job} / {step}）")
+            print()
+            print("带 `--base-rev` 的按 PR 基线填（本地用 `origin/main` 或 `HEAD^1`）；"
+                  "CI 里用的是 `HEAD^1`。")
+    else:
+        print("| CI 门禁 | 未发现 `.github/workflows`，需人工确认该仓的检查命令 | [推导] |")
 
     skip_hits = []
     scanned = 0

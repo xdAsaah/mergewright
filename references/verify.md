@@ -122,3 +122,21 @@ Copy-Item tmp\orig.bak <实现文件> -Force
 **记法**：`有守护` 要给出 `文件:行号`；`无守护` 要给出「读过哪些文件 + 检索了什么」。只有后一种能引出测试 PR，所以它必须比前一种更严格。
 
 > 真实案例（2026-11-27，agent-autoloop）：搜卡片页转义时只看了检索命中的前 15 条，就判「HTML 转义零守护」，正准备开测试 PR；实际 `tests/http.test.ts:321` 早就把 `<script>alert(1)</script>` 当卡片标题验过转义。同理把「跨轮 run token」判成缺守护，而 `tests/runs.test.ts:516` 的用例名就是「a run token works only for its run」。**在一个有 104 个测试文件的项目上，我差点提交一个「测试已经存在」的 PR。**
+
+## 九、跨后端移植查询：只借形状，不借语义
+
+> 触发：把兄弟 provider / 兄弟模块的查询写法搬过来（ES 的 `terms` → Couchbase 的 query、SQL 方言之间、正则引擎之间、ORM 之间）。
+
+**同一个「形状」在不同后端是不同语义。** 兄弟 provider 里 `{"terms": {"metadata.document_id.keyword": ids}}` 能用，不等于目标后端的 `TermQuery(field="metadata.document_id")` 能用——前者打在 keyword 子字段上、不分析；后者可能打在 standard analyzer 建出来的 text 字段上，而 `term` 查询偏偏不分析输入。
+
+**三个必答**（写进候选证据，不能口头过）：
+
+| # | 必答 | 证据从哪来 |
+| --- | --- | --- |
+| 1 | 目标后端里这个字段**怎么建的**？analyzer 是什么、有没有 keyword 子字段、是不是 dynamic 映射出来的？ | 索引定义的 JSON / 建表 DDL / ORM 模型；不是猜 |
+| 2 | 这种查询类型**会分析输入吗**？ | ES / Couchbase：`term` 不分析，`match` / `match_phrase` 按字段 analyzer 分析；SQL 看 collation |
+| 3 | 值里**有没有分隔符**？连字符 UUID、路径、邮箱、大小写混排被拆 token 后，整串 term 会不会 0 命中？反过来，analyzed 查询会不会命中别的文档（`or` 操作符就是）？ | 拿真实 id 代入第 1、2 步推一遍 |
+
+**证据只认索引映射 + 官方文档，mock 不算。** mock 只能证明「你传了什么形状」，不能证明「后端怎么解释它」。真集群跑不了时，PR 正文必须写成「单测证明请求形状；语义未验证，等 e2e」——写成「已验证」就是过度声明。
+
+> 真实案例（2026-11-27，dify vdb-couchbase #47401）：照 ES 家族的 `term` 形状写了 `TermQuery`，但 Couchbase 索引 `default_analyzer: standard` + `metadata.dynamic: true`，连字符 UUID 被拆成 5 个 token，整串 term 在真集群 0 命中；mock 断言全绿。dosubot 指出后改成 analyzed 的 `match` + `and` 算子。**那份索引 JSON 就在同一个文件里，读过却没和「term 不分析」连起来。**

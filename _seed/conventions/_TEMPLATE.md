@@ -38,10 +38,24 @@
 | 修 bug 是否必须带失败测试 | 是 / 否 / 视情况 | |
 | 纯文档改动是否需要测试 | | |
 | 提交前必跑的命令 | | |
+| CI 门禁（逐 job 的 `run:` 命令） | 见下方「CI 门禁」小节；**禁止只写 `make lint`** | |
+| 仓库自建守卫脚本 | `scripts/check_*.py` / `dev/*-check-local` 等，含必填参数（如 `--base-rev`） | |
+| 类型检查 | `make type-check-core` / `pyrefly check <目标>` / `tsc -p <配置>`，以及排除表路径 | |
 | 涉及哪些目录要跑更重的检查 | | |
 | 哪些测试文件在本机跑不了 | | |
 | 测试文件命名约定 | | |
 | 是否接受「读源码断言」式的守卫测试 | 是 / 否 / 未知 | |
+
+### CI 门禁（逐 job 抄自 `.github/workflows`）
+
+> 用 `python scripts/prtool.py onboard --path <本地仓库>` 生成，再人工核对。
+> **PR 模板的 checklist 会漏仓库自建脚本**——dify 的模板只写 `make lint`，而 Style Check 另跑 6 个 `scripts/check_no_new_*.py` 和 `make type-check-core`。门禁以 workflow 的 `run:` 为准，不以模板为准。
+
+| 工作流 / job | 步骤 | run 命令 | 本地可跑 |
+| --- | --- | --- | --- |
+| | | | 是 / 否（缺服务/依赖组） |
+
+**带 `--base-rev` 的脚本**：PR 事件的基线是 `HEAD^1`（测试的是 merge commit 的第一父提交），本地用 `origin/main` 或分支起点。
 
 ## 3. 维护者政策
 

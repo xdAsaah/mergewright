@@ -97,6 +97,7 @@ git -c user.name=<你的用户名> -c user.email=<noreply 邮箱> commit -m "<�
 ## 五、开 PR 的必选项
 
 - **在审数没到上限**：`status --author` 的「在审 N/3」，N 必须 < 3（见硬规则 13）。到 3 条就别开，去 `follow-up.md` 跟进
+- **本地跑过该仓 CI 门禁**：`conventions/<项目>.md` §2 的逐 job 清单（`scripts/check_*.py`、`dev/*-check-local`、`make type-check*`），**不是只跑 `pytest` + `ruff`**；带 `--base-rev` 的按 PR 基线（本地用 `origin/main` 或分支起点）。这份清单由 `onboard` 从 `.github/workflows` 抽，别拿 PR 模板的 checklist 代替——模板会漏
 - **Allow edits by maintainers**：`conventions` 说是要求就必勾（`maintainer_can_modify: true`）
 - 分支从最新默认分支起（先 fetch）
 - 外部贡献走 Fork，不要往上游推分支
@@ -136,7 +137,7 @@ git -c user.name=<你的用户名> -c user.email=<noreply 邮箱> commit -m "<�
 
 ## 七、开完立刻做
 
-1. 等 CI 全绿
+1. 等 CI 全绿——**「没动静」不等于绿**：fork PR 的 check suite 常是 `action_required`（等维护者点 Approve and run），要看结论而不是看有没有红色
 2. 记录到 `projects/<项目>/ledger.md` 和 `state/prs.jsonl`
 3. 更新 `projects/_index.md` 的下一个动作
 4. **如果关联了 issue**，更新 `projects/<项目>/issues.md` 的状态为「PR 已提」
@@ -146,6 +147,9 @@ git -c user.name=<你的用户名> -c user.email=<noreply 邮箱> commit -m "<�
 
 | 坑 | 表现 | 处理 |
 | --- | --- | --- |
+| **把 mock 形状断言写成「已验证行为」** | 单测断言了请求体字段，正文写「已验证过滤生效」；真集群语义没验 | 正文拆成两句：「单测证明请求形状」+「真实语义未验证，等 e2e」；跑不了 e2e 就明说 |
+| **拿兄弟 provider / 后端的上游形状当语义** | 照 ES 的 `term` 写 Couchbase 的 `TermQuery`，字段被 standard analyzer 拆了 token，0 命中 | 先读目标后端的索引映射再写查询，三必答见 `references/verify.md` 第九节 |
+| **把 PR 模板的 checklist 当 CI 门禁** | 模板只写 `make lint && make type-check`，CI 另跑 6 个 `scripts/check_no_new_*.py` | 门禁以 `.github/workflows` 的 `run:` 为准，用 `onboard` 抽，逐条本地跑 |
 | 上个 PR 的 commit 混进来 | PR 显示多余文件 | 从默认分支新建分支再 cherry-pick |
 | 只修撞到的那一处 | 维护者合并时补了同类漏项 | 全库搜一遍同类再提 |
 | 注释/正文里的类比没验证 | 维护者只改了你这句注释 | 写进 PR 的文字也要能站住 |
