@@ -87,14 +87,47 @@ git -c user.name=<你的用户名> -c user.email=<noreply 邮箱> commit -m "<�
 - 外部贡献走 Fork，不要往上游推分支
 - 只含本次改动的 commit（用新分支，别把上个 PR 的 commit 带进来）
 
-## 六、开完立刻做
+## 六、关联 issue
+
+**修了某个 issue，PR 正文必须写关键词**，否则 issue 不会自动关闭，维护者要手动关联。
+
+### 三个关键词，别用错
+
+| 写法 | 作用 | 什么时候用 |
+| --- | --- | --- |
+| `Fixes #123` | 合并后**自动关闭** issue | 这个 PR 完整解决了该 issue |
+| `Closes #123` | 同上，语义等价 | 同上，习惯用哪个都行 |
+| `Refs #123` | 只建立引用，**不关闭** | 只解决了 issue 的一部分 |
+
+**放哪**：PR 正文任意位置都行，但放在第一段或专门的 `## Related` 段最清楚。有些项目模板里有固定位置，查 `conventions` 的「PR 正文模板」。
+
+**一条 PR 只关一个 issue。** 写 `Fixes #1, #2` 会被维护者要求拆开——一个 PR 解决一个问题。
+
+### 没有关联 issue 时
+
+**不要为了写 `Fixes` 而硬编一个 issue 号。** 纯 bug 修复、文档改动通常不需要关联。
+
+如果你觉得这个问题值得留档，可以在 PR 正文里说明「No related issue」，或者提完 PR 后自己开一个 issue 关联回去（少见，通常没必要）。
+
+### 反过来：先开 issue 再提 PR
+
+`conventions` 的 3.2「issue 政策」写了哪类改动必须先开 issue。开了 issue 之后：
+
+1. 等维护者表态（同意方向 / 提出修改 / 说他自己改）
+2. 得到正面回应后再提 PR
+3. PR 正文写 `Fixes #<你开的 issue 号>`
+
+**如果维护者在你开 issue 后说「我自己改」**，直接停手，不要提 PR。
+
+## 七、开完立刻做
 
 1. 等 CI 全绿
 2. 记录到 `projects/<项目>/ledger.md` 和 `state/prs.jsonl`
 3. 更新 `projects/_index.md` 的下一个动作
-4. 按 `preferences.md` 的响应时限盯 review（默认 24 小时）
+4. **如果关联了 issue**，更新 `projects/<项目>/issues.md` 的状态为「PR 已提」
+5. 按 `preferences.md` 的响应时限盯 review（默认 24 小时）
 
-## 七、贡献类踩坑（与工具无关）
+## 八、贡献类踩坑（与工具无关）
 
 | 坑 | 表现 | 处理 |
 | --- | --- | --- |

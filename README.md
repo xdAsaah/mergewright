@@ -69,6 +69,7 @@ python scripts/prtool.py whoami
 
 ```bash
 python scripts/prtool.py status  --repo owner/repo --author 你的用户名
+python scripts/prtool.py issues  --repo owner/repo
 python scripts/prtool.py onboard --path <本地仓库>
 python scripts/prtool.py append  --file state/prs.jsonl --json '{...}'
 python scripts/prtool.py check
@@ -77,7 +78,8 @@ python scripts/prtool.py whoami
 
 | 子命令 | 做什么 |
 | --- | --- |
-| `status` | 现算合并率、open 积压、通道活性，支持 GitHub / GitLab |
+| `status` | 现算合并率、open 积压、通道活性，按 PR 类型分组统计；支持 GitHub / GitLab |
+| `issues` | 扫 open issue，标新手友好 / 欢迎 PR / 长期未修 / 已认领 |
 | `onboard` | 读本地仓库，推导出 commit 规范、测试命令、PR 模板等 |
 | `append` | 往 JSONL 台账追加一条事件 |
 | `check` | 自检档案：死链、目录缺失、坏 JSON、必备节、手写数字 |
@@ -85,7 +87,7 @@ python scripts/prtool.py whoami
 
 只依赖 Python 3.8+ 标准库，无第三方包。凭据从 `git credential` 取，不落盘、不回显。
 
-`scripts/*.ps1` 是 Windows PowerShell 的等价实现，但只覆盖 `status` / `onboard` / `append` 三个子命令。
+`scripts/*.ps1` 是 Windows PowerShell 的等价实现，但只覆盖 `status` / `onboard` / `append` 三个子命令，**没有 `issues`、`check`、`whoami`**。
 
 ## 硬规则
 
@@ -97,6 +99,36 @@ python scripts/prtool.py whoami
 4. **数字不要手写**：合并率一律由 `status` 现算
 5. **每次会话结束必须回填**档案，不写等于白做
 6. **每次会话先定 PR 类型再挖候选**，不要挖完再问。类型只有五类：`fix` / `test` / `feat` / `perf` / `docs`
+
+## 下一步做什么（四档优先级）
+
+每次会话从上往下查，命中就停：
+
+| 档 | 条件 | 动作 |
+| --- | --- | --- |
+| 1 | `candidates.md` 有待提候选 | 直接汇报，问要不要提 |
+| 2 | 有待验证候选 | 先补证据，够格就升档 |
+| 3 | 都空，且该项目 **0 个 PR** | 推荐低价值方向当敲门砖 |
+| 4 | 都空，且已提过 PR | 问用户这次做哪类 |
+
+前两档不问类型——候选已在手，直接问「要做吗」。第 3 档的「0 个 PR」不是「0 个 merged」，提过被关闭的算有记录。
+
+## issue 怎么用
+
+issue 既是候选来源，也是防重复的记录：
+
+```bash
+python scripts/prtool.py issues --repo owner/repo
+```
+
+自动标记**新手友好**（`good first issue`）、**欢迎 PR**（`help wanted`）、**长期未修**（≥90 天未认领）、**已认领**（不要碰）。
+
+| 场景 | 规则 |
+| --- | --- |
+| 找候选 | 优先看标了新手友好 / 欢迎 PR 的 |
+| 要不要先开 issue | 查 `conventions/<项目>.md` 的 3.2「issue 政策」；新增功能、改协议必须先谈 |
+| PR 正文 | 完整解决写 `Fixes #N`，部分解决写 `Refs #N`；一条 PR 只关一个 issue |
+| 会话结束 | 更新 `projects/<项目>/issues.md` |
 
 ## PR 类型怎么定
 
@@ -131,7 +163,7 @@ pr-merged/
 │   └── _TEMPLATE.md      规则文件模板
 ├── projects/
 │   ├── _index.md         项目一览（空表头）
-│   └── _template/        项目档案模板
+│   └── _template/        项目档案模板（profile / ledger / candidates / excluded / issues）
 ├── state/
 │   ├── prs.jsonl         PR 事件流水
 │   └── scans.jsonl       扫描流水

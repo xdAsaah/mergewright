@@ -42,7 +42,8 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 4. **标题写「场景：旧行为 → 新行为」**，正文格式按 `conventions/<项目>.md` 的「PR 正文模板」。
 5. **每次会话结束必须回填**：`projects/_index.md` 的下一个动作、对应项目的 `ledger.md` / `candidates.md`、`state/*.jsonl` 追加事件。不写等于白做。
 6. **踩到的坑当场归类**：只对这个项目成立 → 写该项目 `ledger.md` 的教训；换个项目也成立 → 写 `lessons.md`。别只留在对话里。
-7. **每次会话都要先定 PR 类型再挖候选**，不要挖完一堆再问用户要不要。类型只用五类：`fix` / `test` / `feat` / `perf` / `docs`。
+7. **每次会话都要先定 PR 类型再挖候选**，不要挖完一堆再问用户要不要。类型只用五类：`fix` / `test` / `feat` / `perf` / `docs`。**例外**：`candidates.md` 的待提/待验证档已有内容时，直接汇报那些候选，不重新问类型。
+8. **先看已有候选，再挖新的。** 已经挖出来、证据齐的候选，优先级高于任何新方向。
 
 ## 路由表
 
@@ -59,6 +60,9 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 | 维护者回复了、要不要改、怎么止损 | `references/follow-up.md` |
 | 找严重 bug（S1/S2 线） | `references/severe-scan.md` |
 | **这次该提哪类 PR、问用户选类型** | `references/first-pr.md` 第六节 + `conventions/<项目>.md` 的「PR 类型接受度」 |
+| **从 issue 里找候选** | `references/hunt-candidate.md` 第 7 种手法 |
+| **判断要不要先开 issue** | `conventions/<项目>.md` 的 3.2「issue 政策」 |
+| **扫某项目 open issue** | `scripts/prtool.py issues --repo owner/repo` |
 | 查某项目当前 PR 状态与合并率 | `scripts/prtool.py status`（或 `scripts/pr-status.ps1`） |
 | **踩到一个坑，判断该记在哪** | `lessons.md` 第一节（判据）+ 第三节（贡献教训）/ 第四节（工具障碍） |
 | **检查档案有没有坏（死链、手写数字、坏 JSON）** | `scripts/prtool.py check` |
@@ -73,6 +77,7 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 | 某项目提过哪些 PR、结果如何、维护者改了什么 | `projects/<项目>/ledger.md` |
 | 某项目哪些方向已排除（防重复调研） | `projects/<项目>/excluded.md` |
 | 某项目待验证 / 待提 / 已筛掉的候选 | `projects/<项目>/candidates.md` |
+| 某项目看过 / 认领 / 自己开的 issue | `projects/<项目>/issues.md` |
 | 严重线的覆盖缺口清单 | `projects/<项目>/coverage.md`（按需创建） |
 | PR 事件流水（机器读，算合并率用） | `state/prs.jsonl` |
 | 扫描流水（查过什么、结论如何） | `state/scans.jsonl` |
@@ -86,14 +91,51 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 1. 读 `preferences.md`（没有就先做初始化）。
 2. 读 `projects/_index.md`，确定本次做哪个项目、做什么。
 3. **读该项目的 `conventions/<项目>.md`** —— 没有就先跑 `references/onboard-project.md`。
-4. 读该项目的 `candidates.md` 与 `excluded.md`，**不要重走已排除的方向**。
-5. **定类型**：读 conventions 的「PR 类型接受度」+ 跑 `status` 看自己各类型的历史合并率，算出建议类型，然后**问用户这次做哪类**。详见 `references/first-pr.md` 第六节。
-6. 按选定类型，用 `references/hunt-candidate.md` 挖候选；每个候选按 `references/verify.md` 定性。
+4. 读该项目的 `candidates.md`、`excluded.md`、`issues.md`，**不要重走已排除的方向**。
+5. **按四档优先级决定这次做什么**（见下节）。
+6. 挖候选时按 `references/hunt-candidate.md`；每个候选按 `references/verify.md` 定性。
 7. 汇报候选与证据，等用户决定。
 8. 用户同意后按 `references/write-pr.md` + 该项目 conventions 开 PR。
 9. 回填：`candidates.md` 状态（带类型）、`state/scans.jsonl` 追加一条、`_index.md` 更新下一个动作；本轮踩到的坑按第 6 条硬规则归类。
 10. PR 有结果时：更新 `ledger.md`、`state/prs.jsonl`、`profile.md` 的维护者画像；每 5 个 PR 更新一次 `ledger.md` 的「类型复盘」表。
 11. 收尾跑一次 `python scripts/prtool.py check`，确认档案没写坏。
+
+## 第五步：这次做什么（四档优先级）
+
+**从上往下查，命中就停，不要跳档。**
+
+| 档 | 条件 | 做什么 | 问不问用户 |
+| --- | --- | --- | --- |
+| **1** | `candidates.md` 的「待提」档非空 | 直接汇报这几个候选，问要不要提 | 只问「提哪个」，不问类型 |
+| **2** | 「待验证」档非空 | 先补证据，够格就升到待提 | 问「要不要继续验证这条」 |
+| **3** | 两档都空，且该项目**提过 0 个 PR** | 推荐低价值方向（docs / test / 平台兼容）作为敲门砖 | 给推荐 + 理由，等确认 |
+| **4** | 两档都空，且已提过 PR | **问用户这次做哪类**（见 `references/first-pr.md` 第六节） | 必须问 |
+
+**为什么前两档不问类型**：候选已经挖好、证据已经在手，再问「你想做哪类」是浪费一轮对话。直接说「有个 fix 候选等着，证据是 X，要做吗」。
+
+**第 3 档的判定**：`ledger.md` 里 PR 记录为 0 条。**注意是 0 个 PR，不是 0 个 merged**——提过但被关闭的项目算「有记录」，走第 4 档，因为它已经暴露过维护者的态度。
+
+**第 3 档推荐什么**（按合并难度从低到高）：
+
+1. 文档勘误、示例修正（`docs`）
+2. 补文档承诺但无测试守护的用例（`test`）
+3. 平台兼容修复（Windows/macOS 上维护者跑不了的那类）
+4. 纯测试基础设施（测试夹具、CI 小修）
+
+推荐时要说清「为什么这个项目适合从低价值开始」——比如「这个项目近 20 个已合并里有 3 个纯测试 PR，说明维护者接受这类」。不要凭感觉推荐。
+
+**第 4 档问完类型后**，才回到 `hunt-candidate.md` 按选定类型挖。
+
+## issue 怎么参与
+
+| 时机 | 做什么 | 详见 |
+| --- | --- | --- |
+| 找候选 | 扫 open issue：`good first issue`、长期未修 bug、维护者说 PR welcome 的 | `references/hunt-candidate.md` 第 7 种手法 |
+| 决定要不要先开 issue | 查 `conventions` 的「issue 政策」 | `conventions/_TEMPLATE.md` 3.2 |
+| 开 PR 时 | 修 issue 就写 `Fixes #N`，只相关就写 `Refs #N` | `references/write-pr.md` 第六节 |
+| 会话结束 | 更新 `projects/<项目>/issues.md` | 见该文件模板 |
+
+**issue 是候选来源，也是防止重复工作的记录。** 别人已认领的 issue 不要碰；自己开的 issue 要追踪回复。
 
 ## 脚本
 

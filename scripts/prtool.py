@@ -255,6 +255,126 @@ def cmd_status(args):
     return 0
 
 
+# ---------------------------------------------------------------- issues
+
+def cmd_issues(args):
+    """扫 open issue，标出 good first issue / 长期未修 / 维护者说 PR welcome 的。"""
+    platform = args.platform
+    site = args.site or ("github.com" if platform == "github" else "gitlab.com")
+    token = get_token(site)
+    if not token:
+        print(f"拿不到 {site} 的 token：先 git credential 登录一次", file=sys.stderr)
+        return 1
+
+    api = "https://api.github.com" if platform == "github" else f"https://{site}/api/v4"
+    if platform == "github":
+        headers = {"Authorization": f"Bearer {token}",
+                   "Accept": "application/vnd.github+json",
+                   "User-Agent": "pr-merged"}
+    else:
+        headers = {"PRIVATE-TOKEN": token, "User-Agent": "pr-merged"}
+
+    repo = args.repo
+    proj = urllib.parse.quote(repo, safe="")
+
+    print(f"=== {platform} : {repo} 的 open issue ===")
+
+    if platform == "github":
+        # issues 接口会混入 PR，用 type:issue 排除
+        q = api_get(f"{api}/search/issues?q=repo:{repo}+type:issue+state:open"
+                    f"&per_page={args.limit}&sort=updated&order=desc", headers)
+        raw = (q or {}).get("items") or []
+    else:
+        raw = api_get(f"{api}/projects/{proj}/issues?state=opened&per_page={args.limit}"
+                      f"&order_by=updated_at", headers) or []
+
+    if not raw:
+        print("没有 open issue。")
+        return 0
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for it in raw:
+        num = it.get("number") or it.get("iid")
+        title = (it.get("title") or "").strip()
+        created = it.get("created_at")
+        updated = it.get("updated_at")
+        labels = [l.get("name", "") if isinstance(l, dict) else str(l)
+                  for l in (it.get("labels") or [])]
+        comments = it.get("comments", 0)
+        assignees = it.get("assignees") or []
+        if platform == "gitlab" and it.get("assignee"):
+            assignees = [it["assignee"]]
+
+        # 判定标签
+        tags = []
+        low = " ".join(labels).lower()
+        if re.search(r"good first issue|good-first-issue|beginner|easy|starter", low):
+            tags.append("新手友好")
+        if re.search(r"help wanted|pr welcome|contributions welcome", low):
+            tags.append("欢迎 PR")
+        if re.search(r"bug|confirmed", low):
+            tags.append("bug")
+        if assignees:
+            tags.append("已认领")
+
+        age = None
+        if created:
+            t = as_time(created)
+            if t:
+                age = round((now - t).total_seconds() / 86400)
+        idle = None
+        if updated:
+            t = as_time(updated)
+            if t:
+                idle = round((now - t).total_seconds() / 86400)
+
+        if age is not None and age >= 90 and not assignees:
+            tags.append("长期未修")
+        if idle is not None and idle >= 60 and comments == 0 and not assignees:
+            tags.append("无人回应")
+
+        rows.append({"num": num, "title": title, "age": age, "idle": idle,
+                     "comments": comments, "labels": labels, "tags": tags})
+
+    # 排序：新手友好/欢迎 PR 优先，然后按年龄降序
+    def rank(r):
+        score = 0
+        if "新手友好" in r["tags"]:
+            score -= 20
+        if "欢迎 PR" in r["tags"]:
+            score -= 15
+        if "已认领" in r["tags"]:
+            score += 30
+        return (score, -(r["age"] or 0))
+
+    rows.sort(key=rank)
+
+    print(f"共 {len(rows)} 个\n")
+    for r in rows:
+        tagstr = f"  [{', '.join(r['tags'])}]" if r["tags"] else ""
+        print(f"  #{r['num']} {r['title'][:70]}{tagstr}")
+        meta = []
+        if r["age"] is not None:
+            meta.append(f"开了 {r['age']} 天")
+        if r["idle"] is not None:
+            meta.append(f"静默 {r['idle']} 天")
+        meta.append(f"评论 {r['comments']}")
+        if r["labels"]:
+            meta.append(", ".join(r["labels"][:4]))
+        print(f"      {' · '.join(meta)}")
+
+    # 汇总提示
+    print()
+    good = [r for r in rows if "新手友好" in r["tags"] or "欢迎 PR" in r["tags"]]
+    stale = [r for r in rows if "长期未修" in r["tags"]]
+    claimed = [r for r in rows if "已认领" in r["tags"]]
+    print(f"可优先看：{len(good)} 个（新手友好 / 欢迎 PR）")
+    print(f"长期未修：{len(stale)} 个（≥90 天且未认领）")
+    print(f"已认领：{len(claimed)} 个（不要碰）")
+    return 0
+
+
 # ---------------------------------------------------------------- onboard
 
 def cmd_onboard(args):
@@ -721,7 +841,7 @@ def cmd_check(args):
     # 4. conventions 必备节
     conv_dir = os.path.join(root, "conventions")
     required = ["## 1. 托管与提交", "## 2. 测试要求", "## 3. 维护者政策",
-                "### 3.1 PR 类型接受度", "## 4. 领域约定",
+                "### 3.1 PR 类型接受度", "### 3.2 issue 政策", "## 4. 领域约定",
                 "## 6. 严重度口径", "## 7. 变更记录"]
     if os.path.isdir(conv_dir):
         for fn in sorted(os.listdir(conv_dir)):
@@ -785,6 +905,13 @@ def main(argv=None):
     w = sub.add_parser("whoami", help="检查 git 提交身份，缺什么给设置步骤")
     w.add_argument("--site", default="", help="默认 github.com")
     w.set_defaults(func=cmd_whoami)
+
+    i = sub.add_parser("issues", help="扫 open issue，标新手友好 / 长期未修 / 已认领")
+    i.add_argument("--repo", required=True)
+    i.add_argument("--platform", default="github", choices=["github", "gitlab"])
+    i.add_argument("--site", default="", help="自建实例的域名，默认 github.com / gitlab.com")
+    i.add_argument("--limit", type=int, default=50, help="最多拉多少个，默认 50")
+    i.set_defaults(func=cmd_issues)
 
     args = ap.parse_args(argv)
     return args.func(args)
