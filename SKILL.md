@@ -94,7 +94,7 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 
 ## 脚本
 
-**两个版本等价，挑一个能跑的就行**：`scripts/prtool.py`（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑）；`scripts/*.ps1`（Windows PowerShell 5.1，无 Python 时用）。
+**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），五个子命令齐全。
 
 ```bash
 # 查某项目状态（现算合并率与通道活性；支持 GitHub / GitLab）
@@ -113,13 +113,22 @@ python scripts/prtool.py check
 python scripts/prtool.py whoami
 ```
 
-Windows PowerShell 等价：
+**没有 Python 时**用 `scripts/*.ps1`（Windows PowerShell 5.1），但**只有三个子命令**，`check` 和 `whoami` 没有对应实现：
 
 ```powershell
 .\scripts\pr-status.ps1 -Repo owner/repo -Author 你的用户名
 .\scripts\append.ps1 -File state/prs.jsonl -Json '{"ts":"...","project":"<项目>","pr":123}'
 .\scripts\onboard.ps1 -Path <本地仓库路径>
 ```
+
+这种情况下，`check` 和 `whoami` 的检查项需要手动做：`check` 见下方清单，`whoami` 见 `references/init.md` 第三节的「手动设置」。
+
+**`check` 手工核对清单**（没有 Python 时）：
+
+- `state/*.jsonl` 每行是否都是合法 JSON，且带 `ts` 和 `project`
+- `projects/_index.md` 里每个项目是否有对应目录和 `conventions/<项目>.md`
+- 文档里 `` `references/` `` 开头的路径引用是否都存在
+- `projects/_index.md` 里有没有手写的合并数（应该用 `status` 现算）
 
 凭据都从 `git credential` 取（同一个凭据库，不落盘、不回显）。两个版本都支持 GitHub 和 GitLab，自建实例用 `--site` / `-Site` 指定域名。
 

@@ -156,11 +156,13 @@ git config --global user.email "<数字ID>+<你的用户名>@users.noreply.githu
 
 ## 五、产出
 
-1. `preferences.md`：按 `_TEMPLATE.md` 填，每条带日期
+1. `preferences.md`：按本文第二节的答案和推导结果填写，每条带日期
 2. `projects/_index.md`：只有表头，没有项目行
 3. `state/prs.jsonl`、`state/scans.jsonl`：空文件
 
 **不要**在初始化时创建 `conventions/` 或 `projects/` 下的任何项目目录——那些等真正进项目时再建。
+
+**不要**因为初始化就去读 `conventions/_TEMPLATE.md`——那是给「进项目」时用的（见 `onboard-project.md`）。
 
 ## 六、初始化完成后，告诉用户什么
 
