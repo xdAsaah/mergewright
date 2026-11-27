@@ -546,6 +546,7 @@ def convert_pull(raw, platform, author):
             "title": raw.get("title"),
             "author": (raw.get("user") or {}).get("login"),
             "created": raw.get("created_at"),
+            "closed": raw.get("closed_at"),
             "merged": raw.get("merged_at"),
             "state": raw.get("state"),
             "assoc": raw.get("author_association"),
@@ -557,6 +558,7 @@ def convert_pull(raw, platform, author):
         "title": raw.get("title"),
         "author": login,
         "created": raw.get("created_at"),
+        "closed": raw.get("closed_at"),
         "merged": raw.get("merged_at") if raw.get("state") == "merged" else None,
         "state": "closed" if raw.get("state") == "merged" else raw.get("state"),
         "assoc": "SELF" if login == author else "OTHER",
@@ -938,6 +940,8 @@ query($owner: String!, $name: String!, $number: Int!) {
       isDraft
       merged
       mergedAt
+      mergedBy { login }
+      closedAt
       createdAt
       updatedAt
       additions
@@ -991,6 +995,12 @@ def split_pr_target(target):
     return norm_repo(s), None
 
 
+def short_time(value):
+    """ISO 时间 -> 本地 'YYYY-MM-DD HH:MM'。"""
+    t = as_time(value)
+    return t.astimezone().strftime("%Y-%m-%d %H:%M") if t else "-"
+
+
 def clip(text, n):
     """压成单行并截断。"""
     t = re.sub(r"\s+", " ", (text or "").strip())
@@ -1009,7 +1019,12 @@ def print_pr(repo, pr, args):
     head_repo = ((pr.get("headRepository") or {}).get("nameWithOwner") or "?")
     labels = [n.get("name") for n in ((pr.get("labels") or {}).get("nodes") or [])]
     print(f"=== {repo}#{pr.get('number')}  {pr.get('title') or ''} ===")
-    when = f"  at {pr.get('mergedAt')}" if merged else ""
+    when = ""
+    if merged:
+        by = ((pr.get("mergedBy") or {}).get("login"))
+        when = f"  at {pr.get('mergedAt')}" + (f" by @{by}" if by else "")
+    elif state == "closed" and pr.get("closedAt"):
+        when = f"  at {pr.get('closedAt')}"
     print(f"state: {state}{when}  draft: {'是' if pr.get('isDraft') else '否'}"
           f"  author: @{((pr.get('author') or {}).get('login') or '?')}")
     print(f"labels: {', '.join(labels) or '-'}  "
@@ -1096,6 +1111,101 @@ def cmd_pr(args):
     # GraphQL 回的是大小写正确的全名，别用 norm_repo 小写后的那个
     full = (((data.get("data") or {}).get("repository") or {}).get("nameWithOwner")) or repo
     print_pr(full, pr, args)
+    return 0
+
+
+# ---------------------------------------------------------------- closed
+
+def cmd_closed(args):
+    """列一个仓库的已关闭 PR 明细：合并 / 未合并、时间，可选关闭理由与合并人。
+
+    列表端点只给 merged_at / closed_at（没有 merged_by），所以：
+      --with-merger  逐条取单 PR 端点（每条 +1 次请求）
+      --reasons      逐条取对话评论，摘维护者最后一条（每条 +1 次请求）
+    """
+    platform = args.platform
+    env = api_env(platform, args.site)
+    if not env:
+        return 1
+    api, headers = env
+    repo = args.repo
+    proj = urllib.parse.quote(repo, safe="")
+    limit = max(1, min(args.limit, 100))
+    spent = 1
+
+    if platform == "github":
+        raw = api_get(f"{api}/repos/{repo}/pulls?state=closed&per_page={limit}"
+                      f"&sort=updated&direction=desc", headers) or []
+    else:
+        raw = api_get(f"{api}/projects/{proj}/merge_requests?state=closed&per_page={limit}"
+                      f"&order_by=updated_at", headers) or []
+    rows = [convert_pull(p, platform, "") for p in raw]
+    if args.only == "merged":
+        rows = [r for r in rows if r["merged"]]
+    elif args.only == "unmerged":
+        rows = [r for r in rows if not r["merged"]]
+    if not rows:
+        print("没有符合条件的已关闭 PR。")
+        return 0
+
+    rows.sort(key=lambda r: as_time(r["closed"] or r["merged"]) or datetime.min.replace(tzinfo=timezone.utc),
+              reverse=True)
+    merged_n = sum(1 for r in rows if r["merged"])
+    print(f"=== {platform} : {repo} 已关闭 PR {len(rows)} 条"
+          f"（合并 {merged_n} / 未合并 {len(rows) - merged_n}）===")
+
+    mergers = {}
+    if args.with_merger:
+        for r in [x for x in rows if x["merged"]][:max(0, args.merger_limit)]:
+            spent += 1
+            if platform == "github":
+                one = api_get(f"{api}/repos/{repo}/pulls/{r['number']}", headers)
+                if one:
+                    mergers[r["number"]] = ((one.get("merged_by") or {}).get("login") or "?")
+            else:
+                one = api_get(f"{api}/projects/{proj}/merge_requests/{r['number']}", headers)
+                if one:
+                    mergers[r["number"]] = ((one.get("merged_by") or {}).get("username") or "?")
+
+    reasons = {}
+    checked_reasons = set()
+    if args.reasons:
+        for r in [x for x in rows if not x["merged"]][:max(0, args.reasons_limit)]:
+            checked_reasons.add(r["number"])
+            spent += 1
+            if platform == "github":
+                cm = api_get(f"{api}/repos/{repo}/issues/{r['number']}/comments?per_page=100", headers) or []
+            else:
+                cm = api_get(f"{api}/projects/{proj}/merge_requests/{r['number']}/notes?per_page=100",
+                             headers) or []
+            pick = None
+            for c in cm:
+                who = ((c.get("user") or {}).get("login")
+                       or (c.get("author") or {}).get("username"))
+                body = c.get("body") or ""
+                if who and who != r["author"] and body.strip():
+                    pick = (who, body)  # 默认按时间升序，最后命中的就是最新一条
+            if pick:
+                reasons[r["number"]] = f"@{pick[0]}: {clip(pick[1], args.reason_chars)}"
+
+    for r in rows:
+        state = "merged" if r["merged"] else "closed"
+        who = f"@{r['author']}" if r["author"] else "-"
+        when = short_time(r["closed"] or r["merged"] or r["created"])
+        line = f"#{r['number']:<6}{state:<9}{who:<16}{when:<18}{clip(r['title'], 60)}"
+        if r["number"] in mergers:
+            line += f"  ← merged by @{mergers[r['number']]}"
+        print(line)
+        if r["number"] in reasons:
+            print(f"         ↳ {reasons[r['number']]}")
+        elif r["number"] in checked_reasons:
+            print("         ↳ （没找到维护者评论，用 pr 子命令看 review）")
+
+    if args.reasons and any(not r["merged"] for r in rows):
+        print("\n提示：--reasons 只取对话评论；line review 里的拒绝理由用 `prtool.py pr <链接>` 读。")
+    print(f"\n请求：{spent} 次"
+          + ("（含 --with-merger " + str(len(mergers)) + " 条）" if args.with_merger else "")
+          + ("（含 --reasons " + str(len(reasons)) + " 条）" if args.reasons else ""))
     return 0
 
 
@@ -1793,6 +1903,22 @@ def main(argv=None):
     r.add_argument("--max-threads", type=int, default=20, help="最多显示多少个行内 review 线程")
     r.add_argument("--max-files", type=int, default=30, help="最多显示多少个改动文件")
     r.set_defaults(func=cmd_pr)
+
+    cl = sub.add_parser("closed", help="列已关闭 PR 明细：合并/未合并、时间，可选关闭理由与合并人")
+    cl.add_argument("--repo", required=True, help="owner/repo 或 group/project")
+    cl.add_argument("--platform", default="github", choices=["github", "gitlab"])
+    cl.add_argument("--site", default="", help="自建实例的域名，默认 github.com / gitlab.com")
+    cl.add_argument("--limit", type=int, default=100, help="拉多少条已关闭 PR，默认 100（上限 100）")
+    cl.add_argument("--only", default="all", choices=["all", "merged", "unmerged"],
+                    help="只看合并 / 未合并，默认全部")
+    cl.add_argument("--with-merger", action="store_true",
+                    help="逐条查合并人（列表端点没有 merged_by，每条 +1 次请求）")
+    cl.add_argument("--merger-limit", type=int, default=20, help="--with-merger 最多查几条，默认 20")
+    cl.add_argument("--reasons", action="store_true",
+                    help="逐条摘未合并 PR 里维护者的最后一条评论（每条 +1 次请求）")
+    cl.add_argument("--reasons-limit", type=int, default=20, help="--reasons 最多查几条，默认 20")
+    cl.add_argument("--reason-chars", type=int, default=200, help="理由截断长度，默认 200")
+    cl.set_defaults(func=cmd_closed)
 
     args = ap.parse_args(argv)
     try:

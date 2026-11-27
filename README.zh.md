@@ -152,6 +152,7 @@ python scripts/prtool.py where   --project <项目> [--path <本地仓库>]
 python scripts/prtool.py append  --file state/prs.jsonl --json '{...}'
 python scripts/prtool.py pr      https://github.com/owner/repo/pull/12
 python scripts/prtool.py api     /repos/owner/repo/pulls/12/comments
+python scripts/prtool.py closed  --repo owner/repo [--only unmerged] [--reasons] [--with-merger]
 python scripts/prtool.py check
 python scripts/prtool.py whoami
 ```
@@ -162,6 +163,7 @@ python scripts/prtool.py whoami
 | `status` | 现算合并率、open 积压、通道活性，按 PR 类型分组统计；支持 GitHub / GitLab |
 | `issues` | 扫 open issue，标新手友好 / 欢迎 PR / 长期未修 / 已认领 / 已有 PR 在审 / 已修待确认 / 有相关 PR / 多 PR 未合 |
 | `pr` | 一次 GraphQL 拿一个 PR 的详情、对话评论、review、行内线程、改动文件 |
+| `closed` | 列已关闭 PR 明细：合并/未合并、时间、合并人（可选）、关闭理由（可选） |
 | `api` | 带 token 的通用 GET：表里没有的数据都走这里，别手搓匿名请求 |
 | `onboard` | 读本地仓库，推导出 commit 规范、测试命令、PR 模板等；同时记下工作副本路径 |
 | `where` | 查/记某个项目的代码在本机哪个目录；标出路径缺失、remote 不符、别的机器 |
@@ -264,7 +266,7 @@ mergewright/              ← skill 包（只读，每个 agent 一份）
 │   ├── follow-up.md      跟进：review 风格 + 止损
 │   ├── severe-scan.md    严重 bug：不变量 + 攻击面矩阵
 │   └── first-pr.md       首 PR 与阶段策略
-├── scripts/              10 个 Python 子命令 + 3 个 PowerShell 等价实现
+├── scripts/              11 个 Python 子命令 + 3 个 PowerShell 等价实现
 └── _seed/                空模板，由 init 拷到数据目录
     ├── preferences.md
     ├── lessons.md

@@ -113,6 +113,8 @@ python scripts/prtool.py issues --repo owner/repo
 
 **动手前必做**：把失败 PR 的评论读一遍，尤其看维护者在里面重复说了什么。重复出现的要求就是真正的验收标准。
 
+**先批量看一眼，再挑着深读**：`python scripts/prtool.py closed --repo <repo> --only unmerged --reasons` 一次拿到每个被拒 PR 里维护者的最后一条评论（每条 1 次请求），在这上面挑出值得研究的，再用 `pr <链接>` 读 review 明细。
+
 **还要看的两类**（工具不标，要自己读）：
 
 - **维护者在评论里说「PR welcome」**——没打标签但态度明确
