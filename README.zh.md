@@ -42,22 +42,26 @@
 
 ## 安装
 
-### Trae / Trae CN
+`pr-merged` 就是一个符合 agent skill 规范的普通目录：`SKILL.md` + YAML frontmatter（`name` + `description`）+ 同目录引用文件。不用构建，没有依赖要装。
+
+clone 到你所用 agent 的 skills 目录下：
 
 ```bash
-git clone https://github.com/xdAsaah/pr-merged.git ~/.trae-cn/skills/pr-merged
+git clone https://github.com/xdAsaah/pr-merged.git <你的-agent-skills-目录>/pr-merged
 ```
 
-### Claude Code
+常见 agent 的 skills 目录：
 
-```bash
-git clone https://github.com/xdAsaah/pr-merged.git ~/.claude/skills/pr-merged
-```
+| Agent | 目录 |
+| --- | --- |
+| Trae / Trae CN | `~/.trae-cn/skills` |
+| Claude Code | `~/.claude/skills` |
+| Codex | `~/.codex/skills` |
+| DSH | `~/.dsh/skills` |
 
-### 其他 agent
+不在表里的话，查你所用 agent 的文档找 skills 目录，结构都是一样的。
 
-skill 格式是通用的：`SKILL.md` + YAML frontmatter（`name` + `description`）+ 同目录引用文件。
-放到你的 agent 的 skills 目录下即可。
+**只要方法、不要记忆功能？** 只拷 `SKILL.md` 和 `references/` 即可，它们不依赖状态文件。
 
 ## 首次使用
 

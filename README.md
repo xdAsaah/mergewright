@@ -42,21 +42,26 @@ A multi-file directory that follows the agent skill convention:
 
 ## Install
 
-### Trae / Trae CN
+`pr-merged` is a plain directory following the agent skill convention: `SKILL.md` with YAML frontmatter (`name` + `description`), plus files referenced from the same directory. No build step, no dependencies to install.
+
+Clone it into your agent's skills directory:
 
 ```bash
-git clone https://github.com/xdAsaah/pr-merged.git ~/.trae-cn/skills/pr-merged
+git clone https://github.com/xdAsaah/pr-merged.git <your-agent-skills-dir>/pr-merged
 ```
 
-### Claude Code
+Common skills directories:
 
-```bash
-git clone https://github.com/xdAsaah/pr-merged.git ~/.claude/skills/pr-merged
-```
+| Agent | Directory |
+| --- | --- |
+| Trae / Trae CN | `~/.trae-cn/skills` |
+| Claude Code | `~/.claude/skills` |
+| Codex | `~/.codex/skills` |
+| DSH | `~/.dsh/skills` |
 
-### Other agents
+If your agent is not listed, check its docs for the skills directory — the layout is the same everywhere.
 
-The skill format is portable: `SKILL.md` with YAML frontmatter (`name` + `description`), plus files referenced from the same directory. Drop it into your agent's skills directory.
+**Only need the method, not the memory?** Copy `SKILL.md` and `references/` alone. They have no dependency on the state files.
 
 ## First run
 
