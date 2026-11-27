@@ -257,6 +257,42 @@ def cmd_status(args):
 
 # ---------------------------------------------------------------- issues
 
+def linked_prs_github(api, repo, num, headers):
+    """查某个 issue 的关联 PR（cross-referenced 事件）。"""
+    events = api_get(f"{api}/repos/{repo}/issues/{num}/timeline?per_page=100", headers)
+    out, seen = [], set()
+    for e in events or []:
+        if e.get("event") != "cross-referenced":
+            continue
+        src = (e.get("source") or {}).get("issue") or {}
+        if not src.get("pull_request"):
+            continue
+        pn = src.get("number")
+        if pn in seen:
+            continue
+        seen.add(pn)
+        out.append({
+            "number": pn,
+            "title": (src.get("title") or "")[:60],
+            "state": src.get("state"),
+            "merged": (src.get("pull_request") or {}).get("merged_at"),
+            "author": (src.get("user") or {}).get("login"),
+        })
+    return out
+
+
+def linked_prs_gitlab(api, proj, iid, headers):
+    """查某个 issue 的关联 MR。"""
+    mrs = api_get(f"{api}/projects/{proj}/issues/{iid}/related_merge_requests", headers)
+    return [{
+        "number": m.get("iid"),
+        "title": (m.get("title") or "")[:60],
+        "state": m.get("state"),
+        "merged": m.get("merged_at"),
+        "author": (m.get("author") or {}).get("username"),
+    } for m in (mrs or [])]
+
+
 def cmd_issues(args):
     """扫 open issue，标出 good first issue / 长期未修 / 维护者说 PR welcome 的。"""
     platform = args.platform
@@ -335,9 +371,38 @@ def cmd_issues(args):
             tags.append("无人回应")
 
         rows.append({"num": num, "title": title, "age": age, "idle": idle,
-                     "comments": comments, "labels": labels, "tags": tags})
+                     "comments": comments, "labels": labels, "tags": tags,
+                     "prs": [], "pr_checked": False})
 
-    # 排序：新手友好/欢迎 PR 优先，然后按年龄降序
+    # 查关联 PR：只查前 N 个（默认 15），避免打满 rate limit
+    if not args.no_linked and rows:
+        # 先按初排顺序，只查最可能做的那些；已认领的不查
+        rows.sort(key=lambda r: (1 if "已认领" in r["tags"] else 0, -(r["age"] or 0)))
+        budget = args.linked_limit
+        checked = 0
+        for r in rows:
+            if checked >= budget:
+                break
+            if "已认领" in r["tags"]:
+                continue
+            if platform == "github":
+                prs = linked_prs_github(api, repo, r["num"], headers)
+            else:
+                prs = linked_prs_gitlab(api, proj, r["num"], headers)
+            r["prs"] = prs
+            r["pr_checked"] = True
+            checked += 1
+            if prs:
+                open_pr = [p for p in prs if p["state"] in ("open", "opened")]
+                merged_pr = [p for p in prs if p["merged"]]
+                if open_pr:
+                    r["tags"].append("已有 PR 在审")
+                elif merged_pr:
+                    r["tags"].append("已修待确认")
+                else:
+                    r["tags"].append("有相关 PR")
+
+    # 排序：新手友好/欢迎 PR 优先；已有 PR 的压到最后
     def rank(r):
         score = 0
         if "新手友好" in r["tags"]:
@@ -346,6 +411,10 @@ def cmd_issues(args):
             score -= 15
         if "已认领" in r["tags"]:
             score += 30
+        if "已有 PR 在审" in r["tags"]:
+            score += 40
+        if "已修待确认" in r["tags"]:
+            score += 25
         return (score, -(r["age"] or 0))
 
     rows.sort(key=rank)
@@ -363,15 +432,23 @@ def cmd_issues(args):
         if r["labels"]:
             meta.append(", ".join(r["labels"][:4]))
         print(f"      {' · '.join(meta)}")
+        for p in r["prs"]:
+            state = "merged" if p["merged"] else p["state"]
+            print(f"      ↳ PR #{p['number']} [{state}] {p['title']}  @{p['author']}")
 
     # 汇总提示
     print()
     good = [r for r in rows if "新手友好" in r["tags"] or "欢迎 PR" in r["tags"]]
     stale = [r for r in rows if "长期未修" in r["tags"]]
     claimed = [r for r in rows if "已认领" in r["tags"]]
+    has_pr = [r for r in rows if "已有 PR 在审" in r["tags"]]
+    done = [r for r in rows if "已修待确认" in r["tags"]]
     print(f"可优先看：{len(good)} 个（新手友好 / 欢迎 PR）")
     print(f"长期未修：{len(stale)} 个（≥90 天且未认领）")
     print(f"已认领：{len(claimed)} 个（不要碰）")
+    if not args.no_linked:
+        print(f"已有 PR 在审：{len(has_pr)} 个（别重复做）")
+        print(f"已修待确认：{len(done)} 个（PR 已合，issue 可能忘关）")
     return 0
 
 
@@ -910,7 +987,11 @@ def main(argv=None):
     i.add_argument("--repo", required=True)
     i.add_argument("--platform", default="github", choices=["github", "gitlab"])
     i.add_argument("--site", default="", help="自建实例的域名，默认 github.com / gitlab.com")
-    i.add_argument("--limit", type=int, default=50, help="最多拉多少个，默认 50")
+    i.add_argument("--limit", type=int, default=50, help="最多拉多少个 issue，默认 50")
+    i.add_argument("--linked-limit", type=int, default=15,
+                   help="查关联 PR 的 issue 数上限，默认 15（每个多一次请求）")
+    i.add_argument("--no-linked", action="store_true",
+                   help="不查关联 PR，速度快但会漏掉「已有人在修」的 issue")
     i.set_defaults(func=cmd_issues)
 
     args = ap.parse_args(argv)

@@ -77,7 +77,7 @@ Select-String -Path <源码目录>\*.<ext> -Pattern '\.slice\(0,\s*\w+\)|substri
 python scripts/prtool.py issues --repo owner/repo
 ```
 
-输出会按优先级排序，并自动标记四类：
+输出会按优先级排序，并自动标记：
 
 | 标记 | 含义 | 该怎么用 |
 | --- | --- | --- |
@@ -85,6 +85,13 @@ python scripts/prtool.py issues --repo owner/repo
 | **欢迎 PR** | 有 `help wanted` / `pr welcome` 标签 | 优先看，维护者明确表示接受外部 PR |
 | **长期未修** | ≥90 天且未认领 | 看有没有人讨论过、为什么没修 |
 | **已认领** | 有 assignee | **不要碰**，别人在做 |
+| **已有 PR 在审** | 有 open 状态的关联 PR | **不要碰**，会撞车 |
+| **已修待确认** | 有已合并的关联 PR，但 issue 还开着 | 大概率已修好，只是忘了关。先去验证，不要重做 |
+| **有相关 PR** | 有关联 PR，但已关闭未合并 | 看关闭理由——如果是因为方案不对，换个思路可能还能做 |
+
+关联 PR 通过 timeline / cross-reference 查询，默认只查前 15 个（`--linked-limit`），每个多一次请求。不想查用 `--no-linked`。
+
+**「已有 PR 在审」和「已修待确认」是省时间的关键标记**——没有它，你可能会花半天做出一个已经有人做完的修复。
 
 **还要看的两类**（工具不标，要自己读）：
 
@@ -93,10 +100,11 @@ python scripts/prtool.py issues --repo owner/repo
 
 **判定一个 issue 能不能做成 PR**：
 
-1. 有没有人已经在做？（看 assignee、最近评论、有没有关联 PR）
+1. 有没有人已经在做？看 `issues` 输出的「已有 PR 在审」标记、assignee、最近评论
 2. 讨论是否收敛？如果还在争论方案，先别动，这是设计型改动
 3. 能不能小步解决？大 issue 只做其中一小块，不要试图一次解决全部
 4. 维护者的最后一条评论是什么时候？如果是半年前且没人理，可能是他改变主意了
+5. **有关联 PR 但被关闭的**，一定要读关闭理由——被拒的是「这个方案」还是「这个问题」
 
 **记录**：看过的 issue 写进 `projects/<项目>/issues.md`，避免下次重看。
 

@@ -130,7 +130,7 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 
 | 时机 | 做什么 | 详见 |
 | --- | --- | --- |
-| 找候选 | 扫 open issue：`good first issue`、长期未修 bug、维护者说 PR welcome 的 | `references/hunt-candidate.md` 第 7 种手法 |
+| 找候选 | 扫 open issue：`good first issue`、长期未修 bug、维护者说 PR welcome 的；**自动标出已有 PR 在审 / 已修待确认的，避免撞车** | `references/hunt-candidate.md` 第 7 种手法 |
 | 决定要不要先开 issue | 查 `conventions` 的「issue 政策」 | `conventions/_TEMPLATE.md` 3.2 |
 | 开 PR 时 | 修 issue 就写 `Fixes #N`，只相关就写 `Refs #N` | `references/write-pr.md` 第六节 |
 | 会话结束 | 更新 `projects/<项目>/issues.md` | 见该文件模板 |

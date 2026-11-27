@@ -79,7 +79,7 @@ python scripts/prtool.py whoami
 | 子命令 | 做什么 |
 | --- | --- |
 | `status` | 现算合并率、open 积压、通道活性，按 PR 类型分组统计；支持 GitHub / GitLab |
-| `issues` | 扫 open issue，标新手友好 / 欢迎 PR / 长期未修 / 已认领 |
+| `issues` | 扫 open issue，标新手友好 / 欢迎 PR / 长期未修 / 已认领 / 已有 PR 在审 / 已修待确认 / 有相关 PR |
 | `onboard` | 读本地仓库，推导出 commit 规范、测试命令、PR 模板等 |
 | `append` | 往 JSONL 台账追加一条事件 |
 | `check` | 自检档案：死链、目录缺失、坏 JSON、必备节、手写数字 |
@@ -121,7 +121,19 @@ issue 既是候选来源，也是防重复的记录：
 python scripts/prtool.py issues --repo owner/repo
 ```
 
-自动标记**新手友好**（`good first issue`）、**欢迎 PR**（`help wanted`）、**长期未修**（≥90 天未认领）、**已认领**（不要碰）。
+自动标记七类：
+
+| 标记 | 该怎么用 |
+| --- | --- |
+| **新手友好**（`good first issue`） | 优先看 |
+| **欢迎 PR**（`help wanted`） | 优先看 |
+| **长期未修**（≥90 天未认领） | 看为什么没修 |
+| **已认领** | 不要碰 |
+| **已有 PR 在审** | 不要碰，会撞车 |
+| **已修待确认**（PR 已合但 issue 未关） | 先去验证，别重做 |
+| **有相关 PR**（PR 被关闭） | 读关闭理由再决定 |
+
+关联 PR 查询默认查前 15 个 issue，每个多一次 API 请求。用 `--linked-limit` 调整，或 `--no-linked` 关掉。
 
 | 场景 | 规则 |
 | --- | --- |
