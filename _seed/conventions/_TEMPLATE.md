@@ -26,6 +26,7 @@
 | 允许的分支名前缀 | | |
 | commit 规范 | conventional commits / 其他 / 无 | |
 | commit 语言 | 英文 / 中文 / 混合 | |
+| PR 正文语言 | 英文（默认）/ 中文（仅用户明确要求时填） | [用户定] |
 | 标题格式 | `<type>(<scope>): <描述>` / 其他 | |
 | PR 正文模板 | 文件路径，或「无模板」 | |
 | 必须勾 Allow edits by maintainers | 是 / 否 | |

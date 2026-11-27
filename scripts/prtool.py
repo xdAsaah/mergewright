@@ -654,6 +654,14 @@ def cmd_status(args):
         print()
         print(f"=== {author} 的 PR ===")
         print(f"总数 {total}  合并 {len(m)}  关闭未合并 {len(c)}  在审 {len(o)}")
+        # 在审上限：同一项目同时最多 3 条 open PR（preferences.md），到顶就只跟进
+        if args.wip_limit > 0:
+            left = args.wip_limit - len(o)
+            if left > 0:
+                print(f"在审 {len(o)}/{args.wip_limit}：还可提 {left} 条")
+            else:
+                print(f"在审 {len(o)}/{args.wip_limit}：已到上限，只跟进 review、按需求改，"
+                      f"不再提新 PR（除非用户明确要求）")
         for i in sorted(items, key=lambda x: x["number"] or 0):
             state = f"merged {i['merged']}" if i["merged"] else i["state"]
             print(f"  #{i['number']} [{state}] {i['title']}")
@@ -1175,7 +1183,8 @@ def cmd_onboard(args):
         key = "中文" if re.search(r"[\u4e00-\u9fff]", s) else "英文"
         langs[key] = langs.get(key, 0) + 1
     if langs:
-        print(f"| commit 语言 | {max(langs, key=langs.get)} | [推导] 近 20 提交 |")
+        print(f"| commit 语言 | {max(langs, key=langs.get)} | [推导] 近 20 提交（写作语言默认英文，"
+              f"只有用户明确要求中文才改） |")
 
     tpl = []
     gh = os.path.join(root, ".github")
@@ -1715,6 +1724,8 @@ def main(argv=None):
     s.add_argument("--site", default="", help="自建实例的域名，默认 github.com / gitlab.com")
     s.add_argument("--no-comments", action="store_true",
                    help="不拉每个 open PR 的评论，省掉 N 次请求（只有总数时够用）")
+    s.add_argument("--wip-limit", type=int, default=3,
+                   help="同一项目在审 PR 上限，默认 3；到顶会提示只跟进不提新 PR")
     s.set_defaults(func=cmd_status)
 
     o = sub.add_parser("onboard", help="读本地仓库，推导 conventions 能自动填的项")

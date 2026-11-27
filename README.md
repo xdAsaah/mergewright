@@ -186,6 +186,8 @@ A few constraints cannot be bypassed:
 5. **Every session ends by writing back** to the archive; unwritten work is wasted work
 6. **Every session decides the PR type before hunting candidates**, not after. Only five types: `fix` / `test` / `feat` / `perf` / `docs`
 7. **Only fetch data over an authenticated channel** (`prtool.py` / `gh`). Unauthenticated quota is 60 requests/hour/IP, and scraping tools cannot send an `Authorization` header. When the quota is exhausted the script aborts with exit code 2 instead of returning an empty "this repo has no PRs"
+8. **PR language defaults to English**: title, body, commit message, and replies to maintainers. Switch to Chinese only when the user explicitly asks, and mark the language row in that project's `conventions` as `[用户定] 中文`. A Chinese PR template file or Chinese commit history is not a reason
+9. **At most 3 open PRs per project** (any type). At the cap, stop hunting and only follow up: revise what reviewers ask for and wait. Breaking the cap requires an explicit user request. `status --author` prints "在审 N/3"
 
 ## What to do next (five tiers)
 
