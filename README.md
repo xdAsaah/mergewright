@@ -2,6 +2,8 @@
 
 让开源 PR 被合并的跨会话工作台。
 
+[English](README.en.md) | 中文
+
 不是「怎么写 PR」的教程，而是解决一个具体问题：**下次打开会话，怎么在几分钟内知道这个项目还剩什么没做、什么已经排除、下一个该做哪条。**
 
 ## 为什么需要它
@@ -121,7 +123,7 @@ issue 既是候选来源，也是防重复的记录：
 python scripts/prtool.py issues --repo owner/repo
 ```
 
-自动标记七类：
+自动标记八类：
 
 | 标记 | 该怎么用 |
 | --- | --- |
@@ -166,7 +168,7 @@ pr-merged/
 │   ├── init.md           首次使用：3 个问题 + 身份检查
 │   ├── onboard-project.md 进新仓库：推导规则 + 观察维护者
 │   ├── choose-project.md 选项目：评分卡 + 统计陷阱
-│   ├── hunt-candidate.md 找候选：6 种扫描手法
+│   ├── hunt-candidate.md 找候选：7 种扫描手法
 │   ├── verify.md         验证：三级证据 + 变异验证
 │   ├── write-pr.md       写 PR：标题、正文、commit
 │   ├── follow-up.md      跟进：review 风格 + 止损
@@ -180,7 +182,7 @@ pr-merged/
 ├── state/
 │   ├── prs.jsonl         PR 事件流水
 │   └── scans.jsonl       扫描流水
-└── scripts/              5 个 Python 子命令 + 3 个 PowerShell 等价实现
+└── scripts/              6 个 Python 子命令 + 3 个 PowerShell 等价实现
 ```
 
 ## 关于仓库里的空文件
