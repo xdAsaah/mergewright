@@ -1755,6 +1755,11 @@ def cmd_check(args):
                             if "<" in target or "*" in target:
                                 continue
                             if not os.path.exists(resolve(target)):
+                                # 数据目录里的 `scripts/xxx.py` 多半指的是被贡献仓库
+                                # 自己的脚本（如 dify 的 scripts/check_no_new_test_doubles.py），
+                                # 存在性只对 skill 包内的文档校验。
+                                if os.path.abspath(base_dir) == os.path.abspath(data) and target.startswith("scripts/"):
+                                    continue
                                 add("err", f"{rel_self}:{i}", f"引用的 {target} 不存在")
 
     # 4. conventions 必备节
