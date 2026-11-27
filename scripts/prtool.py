@@ -112,17 +112,27 @@ DATA_ITEMS = ("preferences.md", "lessons.md", "conventions", "projects", "state"
 
 
 def data_root(explicit=""):
-    """数据目录：--data > $PR_MERGED_HOME > ~/.pr-merged。
+    """数据目录：--data > $MERGEWRIGHT_HOME > ~/.mergewright。
 
     所有 projects/ conventions/ state/ preferences.md lessons.md 都在这里，
     不在 skill 包里——这样多个 agent 可以共用同一份执行记录。
+
+    改名兼容：这个技能以前叫 pr-merged。老用户已有的 $PR_MERGED_HOME
+    和 ~/.pr-merged/ 继续认，历史记录不会因为改名而丢失；两者都存在时
+    优先用新名字的目录。
     """
     if explicit:
         return os.path.abspath(os.path.expanduser(explicit))
-    env = os.environ.get("PR_MERGED_HOME", "").strip()
-    if env:
-        return os.path.abspath(os.path.expanduser(env))
-    return os.path.join(os.path.expanduser("~"), ".pr-merged")
+    for var in ("MERGEWRIGHT_HOME", "PR_MERGED_HOME"):
+        env = os.environ.get(var, "").strip()
+        if env:
+            return os.path.abspath(os.path.expanduser(env))
+    home = os.path.expanduser("~")
+    current = os.path.join(home, ".mergewright")
+    legacy = os.path.join(home, ".pr-merged")
+    if not os.path.isdir(current) and os.path.isdir(legacy):
+        return legacy
+    return current
 
 
 def data_file(rel, explicit=""):
@@ -434,9 +444,9 @@ def cmd_status(args):
     if platform == "github":
         headers = {"Authorization": f"Bearer {token}",
                    "Accept": "application/vnd.github+json",
-                   "User-Agent": "pr-merged"}
+                   "User-Agent": "mergewright"}
     else:
-        headers = {"PRIVATE-TOKEN": token, "User-Agent": "pr-merged"}
+        headers = {"PRIVATE-TOKEN": token, "User-Agent": "mergewright"}
 
     proj = urllib.parse.quote(args.repo, safe="")
     repo = args.repo
@@ -600,9 +610,9 @@ def cmd_issues(args):
     if platform == "github":
         headers = {"Authorization": f"Bearer {token}",
                    "Accept": "application/vnd.github+json",
-                   "User-Agent": "pr-merged"}
+                   "User-Agent": "mergewright"}
     else:
-        headers = {"PRIVATE-TOKEN": token, "User-Agent": "pr-merged"}
+        headers = {"PRIVATE-TOKEN": token, "User-Agent": "mergewright"}
 
     repo = args.repo
     proj = urllib.parse.quote(repo, safe="")
@@ -1115,7 +1125,7 @@ def cmd_whoami(args):
         suggested = email
     elif cred_user:
         info = api_get(f"https://api.github.com/users/{cred_user}",
-                       {"User-Agent": "pr-merged"})
+                       {"User-Agent": "mergewright"})
         uid = str((info or {}).get("id") or "")
         if uid:
             suggested = f"{uid}+{cred_user}@users.noreply.github.com"
@@ -1175,7 +1185,7 @@ def cmd_check(args):
         print()
         print(f"  数据目录还没建。先跑：")
         print(f"    python scripts/prtool.py init")
-        print(f"  或用 --data 指定，或设 PR_MERGED_HOME 环境变量。")
+        print(f"  或用 --data 指定，或设 MERGEWRIGHT_HOME 环境变量。")
         print()
         if problems:
             print(f"包有 {len(problems)} 个问题：")
@@ -1359,29 +1369,29 @@ def main(argv=None):
     o.add_argument("--path", required=True)
     o.add_argument("--project", default="", help="项目名，默认取目录名")
     o.add_argument("--no-record", action="store_true", help="只采集，不写工作副本记录")
-    o.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
+    o.add_argument("--data", default="", help="数据目录，默认 ~/.mergewright 或 $MERGEWRIGHT_HOME")
     o.set_defaults(func=cmd_onboard)
 
     w2 = sub.add_parser("where", help="查/记某个项目的本地工作副本路径（跨 agent 共享）")
     w2.add_argument("--project", default="", help="项目名，如 agent-autoloop")
     w2.add_argument("--repo", default="", help="owner/repo，按仓库过滤或补全")
     w2.add_argument("--path", default="", help="给了就记录这个路径，不给就只查询")
-    w2.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
+    w2.add_argument("--data", default="", help="数据目录，默认 ~/.mergewright 或 $MERGEWRIGHT_HOME")
     w2.set_defaults(func=cmd_where)
 
     a = sub.add_parser("append", help="往 JSONL 台账追加一条记录")
     a.add_argument("--file", required=True, help="相对路径按数据目录解析，绝对路径原样用")
     a.add_argument("--json", default="", help="省略则从 stdin 读")
-    a.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
+    a.add_argument("--data", default="", help="数据目录，默认 ~/.mergewright 或 $MERGEWRIGHT_HOME")
     a.set_defaults(func=cmd_append)
 
     c = sub.add_parser("check", help="自检：skill 包完整性 + 数据档案健康度")
     c.add_argument("--root", default="", help="skill 包根目录，默认取本脚本的上一级")
-    c.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
+    c.add_argument("--data", default="", help="数据目录，默认 ~/.mergewright 或 $MERGEWRIGHT_HOME")
     c.set_defaults(func=cmd_check)
 
     n = sub.add_parser("init", help="建数据目录骨架（已存在的文件不覆盖）")
-    n.add_argument("--data", default="", help="数据目录，默认 ~/.pr-merged 或 $PR_MERGED_HOME")
+    n.add_argument("--data", default="", help="数据目录，默认 ~/.mergewright 或 $MERGEWRIGHT_HOME")
     n.set_defaults(func=cmd_init)
 
     w = sub.add_parser("whoami", help="检查 git 提交身份，缺什么给设置步骤")

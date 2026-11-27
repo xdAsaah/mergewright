@@ -5,7 +5,7 @@
 
 ## 零、先确保数据目录存在
 
-**在问任何问题之前做这一步。** 数据目录默认 `~/.pr-merged/`，所有执行记录都在那里。
+**在问任何问题之前做这一步。** 数据目录默认 `~/.mergewright/`，所有执行记录都在那里。
 
 ```bash
 python scripts/prtool.py init
@@ -13,7 +13,7 @@ python scripts/prtool.py init
 
 它会从 skill 包的 `_seed/` 拷出骨架（`preferences.md`、`lessons.md`、`conventions/`、`projects/`、`state/`），**已存在的文件不覆盖**，重复跑是安全的。
 
-如果用户想放别的位置，用 `--data <路径>` 或设环境变量 `PR_MERGED_HOME`。定了之后告诉用户：「以后所有记录都在 `<路径>`，换 agent 也是这一份。」
+如果用户想放别的位置，用 `--data <路径>` 或设环境变量 `MERGEWRIGHT_HOME`。定了之后告诉用户：「以后所有记录都在 `<路径>`，换 agent 也是这一份。」
 
 **检查是否已经初始化过**：
 

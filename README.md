@@ -1,10 +1,12 @@
-# pr-merged
+# mergewright
 
 **Land your first merged PR. Then keep landing them.**
 
+*An open-source PR workbench with memory.*
+
 Most contribution attempts die quietly. Not because the code was wrong, but because nobody told you the maintainer doesn't accept injected faults as evidence, that three other places have the same gap, or that someone already has a PR open for the exact issue you just spent two hours on.
 
-`pr-merged` is a cross-session workbench that fixes that. It hunts real candidates, forces you to prove the bug before writing code, keeps you out of PR pileups, and remembers every project's rules, every excluded direction, and every post-mortem between sessions — so the next one starts in minutes instead of from scratch.
+`mergewright` is a cross-session workbench that fixes that. It hunts real candidates, forces you to prove the bug before writing code, keeps you out of PR pileups, and remembers every project's rules, every excluded direction, and every post-mortem between sessions — so the next one starts in minutes instead of from scratch.
 
 English | [中文](README.zh.md)
 
@@ -42,12 +44,12 @@ A multi-file directory that follows the agent skill convention:
 
 ## Install
 
-`pr-merged` is a plain directory following the agent skill convention: `SKILL.md` with YAML frontmatter (`name` + `description`), plus files referenced from the same directory. No build step, no dependencies to install.
+`mergewright` is a plain directory following the agent skill convention: `SKILL.md` with YAML frontmatter (`name` + `description`), plus files referenced from the same directory. No build step, no dependencies to install.
 
 **Step 1** — clone it into your agent's skills directory:
 
 ```bash
-git clone https://github.com/xdAsaah/pr-merged.git <your-agent-skills-dir>/pr-merged
+git clone https://github.com/xdAsaah/mergewright.git <your-agent-skills-dir>/mergewright
 ```
 
 Common skills directories:
@@ -64,10 +66,12 @@ If your agent is not listed, check its docs for the skills directory — the lay
 **Step 2** — create the data directory:
 
 ```bash
-python <your-agent-skills-dir>/pr-merged/scripts/prtool.py init
+python <your-agent-skills-dir>/mergewright/scripts/prtool.py init
 ```
 
-This creates `~/.pr-merged/` with the archive skeleton. Existing files are never overwritten, so re-running is safe.
+This creates `~/.mergewright/` with the archive skeleton. Existing files are never overwritten, so re-running is safe.
+
+**Upgrading from `pr-merged`?** Your `~/.pr-merged/` archive and `PR_MERGED_HOME` variable still work — the tool keeps using the old directory while it exists, so no history is lost. To move to the new location for good, run `mv ~/.pr-merged ~/.mergewright`.
 
 **Only need the method, not the memory?** Copy `SKILL.md` and `references/` alone. They have no dependency on the state files.
 
@@ -76,8 +80,8 @@ This creates `~/.pr-merged/` with the archive skeleton. Existing files are never
 The repo also ships `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, so Claude Code can install it as a plugin instead of a loose skill:
 
 ```bash
-/plugin marketplace add xdAsaah/pr-merged
-/plugin install pr-merged@pr-merged
+/plugin marketplace add xdAsaah/mergewright
+/plugin install mergewright@mergewright
 ```
 
 Both manifests pass `claude plugin validate`. The plugin entry only points back at this directory, so the skill files stay exactly where they are — nothing is duplicated.
@@ -89,14 +93,14 @@ Both manifests pass `claude plugin validate`. The plugin entry only points back 
 | | Location | Notes |
 | --- | --- | --- |
 | **Skill package** | Wherever you cloned it | Read-only. Upgrade with `git pull`. One copy per agent |
-| **Data directory** | `~/.pr-merged/` by default | Single. All execution records live here, **shared across every agent** |
+| **Data directory** | `~/.mergewright/` by default | Single. All execution records live here, **shared across every agent** |
 
 Why it matters: you may have the skill installed under Trae, Claude Code, and Codex at the same time. If your records lived inside the package, switching agents would show you an empty archive — no memory of what you already investigated, excluded, or submitted. With the data directory split out, every agent opens the same history.
 
-Override the location with `--data <path>` or the `PR_MERGED_HOME` environment variable:
+Override the location with `--data <path>` or the `MERGEWRIGHT_HOME` environment variable:
 
 ```bash
-PR_MERGED_HOME=/path/to/archive python scripts/prtool.py check
+MERGEWRIGHT_HOME=/path/to/archive python scripts/prtool.py check
 ```
 
 The package's `_seed/` holds the blank templates. Do not edit files there — they are what `init` copies from.
@@ -241,7 +245,7 @@ Then it **asks you which type to do this time**. It does not decide for you. Can
 ## Layout
 
 ```
-pr-merged/                ← skill package (read-only, one per agent)
+mergewright/                ← skill package (read-only, one per agent)
 ├── SKILL.md              Entry point: routing table, hard rules, session flow
 ├── .claude-plugin/       Claude Code plugin + marketplace manifests
 ├── README.md / README.zh.md
@@ -263,7 +267,7 @@ pr-merged/                ← skill package (read-only, one per agent)
     ├── projects/_index.md + _template/ (profile/ledger/candidates/excluded/issues)
     └── state/prs.jsonl + scans.jsonl + workspaces.jsonl
 
-~/.pr-merged/             ← your data (shared by every agent)
+~/.mergewright/             ← your data (shared by every agent)
 ├── preferences.md
 ├── lessons.md
 ├── conventions/<project>.md
@@ -275,7 +279,7 @@ pr-merged/                ← skill package (read-only, one per agent)
 
 The templates in `_seed/` are copied to your data directory by `init`. They never contain the author's personal data.
 
-Do not edit files inside `_seed/` — they are the source that future `init` runs copy from. Edit your own copies under `~/.pr-merged/` instead.
+Do not edit files inside `_seed/` — they are the source that future `init` runs copy from. Edit your own copies under `~/.mergewright/` instead.
 
 ## License
 

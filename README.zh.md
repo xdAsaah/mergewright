@@ -1,10 +1,12 @@
-# pr-merged
+# mergewright
 
 **拿到第一个被合并的 PR。然后是第二个、第三个。**
 
+*一个带记忆的开源 PR 工作台。*
+
 大部分贡献不是失败在代码上，是死在没人告诉你的地方：维护者不认注入的故障当证据，修了一处还有三处同样的坑，或者你花两小时做完的修复，早就有人开了 PR。
 
-`pr-merged` 是一个跨会话工作台，专门解决这些。它帮你找真实候选、逼你在写代码前先证明 bug、让你避开撞车，并把每个项目的规则、排除过的方向、每个 PR 的复盘都记住——下次开局几分钟，不是从零开始。
+`mergewright` 是一个跨会话工作台，专门解决这些。它帮你找真实候选、逼你在写代码前先证明 bug、让你避开撞车，并把每个项目的规则、排除过的方向、每个 PR 的复盘都记住——下次开局几分钟，不是从零开始。
 
 [English](README.md) | 中文
 
@@ -42,12 +44,12 @@
 
 ## 安装
 
-`pr-merged` 就是一个符合 agent skill 规范的普通目录：`SKILL.md` + YAML frontmatter（`name` + `description`）+ 同目录引用文件。不用构建，没有依赖要装。
+`mergewright` 就是一个符合 agent skill 规范的普通目录：`SKILL.md` + YAML frontmatter（`name` + `description`）+ 同目录引用文件。不用构建，没有依赖要装。
 
 **第 1 步** — clone 到你所用 agent 的 skills 目录下：
 
 ```bash
-git clone https://github.com/xdAsaah/pr-merged.git <你的-agent-skills-目录>/pr-merged
+git clone https://github.com/xdAsaah/mergewright.git <你的-agent-skills-目录>/mergewright
 ```
 
 常见 agent 的 skills 目录：
@@ -64,10 +66,12 @@ git clone https://github.com/xdAsaah/pr-merged.git <你的-agent-skills-目录>/
 **第 2 步** — 建数据目录：
 
 ```bash
-python <你的-agent-skills-目录>/pr-merged/scripts/prtool.py init
+python <你的-agent-skills-目录>/mergewright/scripts/prtool.py init
 ```
 
-会在 `~/.pr-merged/` 建好档案骨架。已存在的文件不会覆盖，重复跑是安全的。
+会在 `~/.mergewright/` 建好档案骨架。已存在的文件不会覆盖，重复跑是安全的。
+
+**从 `pr-merged` 升级过来的？** 已有的 `~/.pr-merged/` 目录和 `PR_MERGED_HOME` 环境变量继续有效——旧目录还在时工具就用旧目录，历史记录不会丢。想彻底搬到新位置，跑 `mv ~/.pr-merged ~/.mergewright`。
 
 **只要方法、不要记忆功能？** 只拷 `SKILL.md` 和 `references/` 即可，它们不依赖状态文件。
 
@@ -76,8 +80,8 @@ python <你的-agent-skills-目录>/pr-merged/scripts/prtool.py init
 仓库里还带了 `.claude-plugin/plugin.json` 和 `.claude-plugin/marketplace.json`，所以 Claude Code 可以按插件方式安装，不必手动往 skills 目录里放：
 
 ```bash
-/plugin marketplace add xdAsaah/pr-merged
-/plugin install pr-merged@pr-merged
+/plugin marketplace add xdAsaah/mergewright
+/plugin install mergewright@mergewright
 ```
 
 两个 manifest 都通过了 `claude plugin validate`。插件条目只是指回本目录，skill 文件位置不变，没有第二份拷贝。
@@ -89,14 +93,14 @@ python <你的-agent-skills-目录>/pr-merged/scripts/prtool.py init
 | | 位置 | 说明 |
 | --- | --- | --- |
 | **skill 包** | 你 clone 的地方 | 只读。升级用 `git pull`。每个 agent 各一份 |
-| **数据目录** | 默认 `~/.pr-merged/` | 唯一。所有执行记录都在这里，**所有 agent 共用同一份** |
+| **数据目录** | 默认 `~/.mergewright/` | 唯一。所有执行记录都在这里，**所有 agent 共用同一份** |
 
 为什么重要：你可能同时在 Trae、Claude Code、Codex 里都装了这个 skill。如果记录跟着包走，切到另一个 agent 就是一份空档案——前面查过什么、排除过什么、提过什么全不知道。分开之后，不管用哪个 agent，打开的都是同一份历史。
 
-换位置用 `--data <路径>` 或环境变量 `PR_MERGED_HOME`：
+换位置用 `--data <路径>` 或环境变量 `MERGEWRIGHT_HOME`：
 
 ```bash
-PR_MERGED_HOME=/path/to/archive python scripts/prtool.py check
+MERGEWRIGHT_HOME=/path/to/archive python scripts/prtool.py check
 ```
 
 包里的 `_seed/` 是空模板，`init` 从这里拷。**不要直接改 `_seed/` 里的文件**——那是模板。
@@ -237,7 +241,7 @@ python scripts/prtool.py issues --repo owner/repo
 ## 目录
 
 ```
-pr-merged/                ← skill 包（只读，每个 agent 一份）
+mergewright/                ← skill 包（只读，每个 agent 一份）
 ├── SKILL.md              入口：路由表、硬规则、会话流程
 ├── .claude-plugin/       Claude Code 插件与 marketplace manifest
 ├── README.md / README.zh.md
@@ -259,7 +263,7 @@ pr-merged/                ← skill 包（只读，每个 agent 一份）
     ├── projects/_index.md + _template/（profile/ledger/candidates/excluded/issues）
     └── state/prs.jsonl + scans.jsonl + workspaces.jsonl
 
-~/.pr-merged/             ← 你的数据（所有 agent 共用）
+~/.mergewright/             ← 你的数据（所有 agent 共用）
 ├── preferences.md
 ├── lessons.md
 ├── conventions/<项目>.md
@@ -271,7 +275,7 @@ pr-merged/                ← skill 包（只读，每个 agent 一份）
 
 `_seed/` 里的模板由 `init` 拷到你的数据目录，永远不含作者的个人数据。
 
-**不要直接改 `_seed/` 里的文件**——它是以后 `init` 拷贝的来源。要改就改 `~/.pr-merged/` 下你自己的那份。
+**不要直接改 `_seed/` 里的文件**——它是以后 `init` 拷贝的来源。要改就改 `~/.mergewright/` 下你自己的那份。
 
 ## License
 

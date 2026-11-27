@@ -1,9 +1,9 @@
 ---
-name: pr-merged
+name: mergewright
 description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 候选、验证证据、写失败测试、开 PR、跟进 review、回填台账。当用户提到提开源 PR、找候选 bug、挖有价值的 PR、写失败测试提 PR、跟进已提 PR 的结果、查看某项目还能提什么、开源贡献台账、避免重复调研某个仓库、给新仓库建立贡献规则时触发。也用于首次进入一个新仓库做评分与首 PR 选择。
 ---
 
-# 开源 PR 工作台
+# mergewright · 开源 PR 工作台
 
 跨会话、跨项目地推进开源贡献。**核心目标不是"多提 PR"，而是下次开会话能在几分钟内回答三个问题**：
 
@@ -19,7 +19,7 @@ description: 开源贡献的跨会话工作台：为某个仓库找可提的 PR 
 python scripts/prtool.py init
 ```
 
-默认建在 `~/.pr-merged/`。已存在的文件不会覆盖，重复跑是安全的。
+默认建在 `~/.mergewright/`。已存在的文件不会覆盖，重复跑是安全的。
 
 **然后**：`preferences.md` 还是空表 → 读 `references/init.md`，问 3 个只有用户知道的问题，一次问完。
 
@@ -33,16 +33,18 @@ python scripts/prtool.py init
 
 | | 位置 | 说明 |
 | --- | --- | --- |
-| **skill 包** | 你 clone 的地方（如 `~/.trae-cn/skills/pr-merged/`） | 只读。升级用 `git pull`，各 agent 各一份 |
-| **数据目录** | 默认 `~/.pr-merged/` | 唯一。所有执行记录都在这里，**多个 agent 共用同一份** |
+| **skill 包** | 你 clone 的地方（如 `~/.trae-cn/skills/mergewright/`） | 只读。升级用 `git pull`，各 agent 各一份 |
+| **数据目录** | 默认 `~/.mergewright/` | 唯一。所有执行记录都在这里，**多个 agent 共用同一份** |
 
 本文档和 `references/` 里提到的 `conventions/`、`projects/`、`state/`、`preferences.md`、`lessons.md`，**一律指数据目录下的路径**，不在 skill 包里。
 
 数据目录的确定顺序：
 
 1. 命令行 `--data <路径>`
-2. 环境变量 `PR_MERGED_HOME`
-3. 默认 `~/.pr-merged/`
+2. 环境变量 `MERGEWRIGHT_HOME`
+3. 默认 `~/.mergewright/`
+
+**老用户兼容**：这个技能以前叫 `pr-merged`。已有的 `~/.pr-merged/` 目录和 `PR_MERGED_HOME` 环境变量仍然有效——`~/.mergewright/` 不存在而 `~/.pr-merged/` 存在时，工具会继续用旧目录，历史记录不受影响。想彻底搬到新目录，把旧目录改个名即可（`mv ~/.pr-merged ~/.mergewright`）。
 
 **为什么这样分**：同一台机器上可能装了 Trae、Claude Code、Codex 各一份 skill。如果数据跟着包走，切到另一个 agent 就是一份空档案，前面做过什么全不知道。分开之后，不管用哪个 agent，打开的都是同一份执行记录。
 
@@ -127,7 +129,7 @@ python scripts/prtool.py where --project <项目>
 
 ## 记录在哪（写之前先看这里）
 
-> 下表全部指**数据目录**下的路径（默认 `~/.pr-merged/`），不是 skill 包里的。
+> 下表全部指**数据目录**下的路径（默认 `~/.mergewright/`），不是 skill 包里的。
 
 | 想知道 | 文件 |
 | --- | --- |
@@ -243,7 +245,7 @@ python scripts/prtool.py whoami
 .\scripts\onboard.ps1 -Path <本地仓库路径>
 ```
 
-这种情况下，`init` 需要手动建目录（从 skill 包的 `_seed/` 拷到 `~/.pr-merged/`），`check` 和 `whoami` 的检查项也要手动做：`check` 见下方清单，`whoami` 见 `references/init.md` 第三节的「手动设置」。
+这种情况下，`init` 需要手动建目录（从 skill 包的 `_seed/` 拷到 `~/.mergewright/`），`check` 和 `whoami` 的检查项也要手动做：`check` 见下方清单，`whoami` 见 `references/init.md` 第三节的「手动设置」。
 
 **`check` 手工核对清单**（没有 Python 时）：
 

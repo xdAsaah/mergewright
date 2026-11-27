@@ -11,5 +11,5 @@ Thumbs.db
 
 # 运行数据不在这个仓库里。
 # 所有个人记录（preferences / lessons / conventions / projects / state）
-# 都写在数据目录 ~/.pr-merged/，由 `prtool.py init` 从 _seed/ 拷出。
+# 都写在数据目录 ~/.mergewright/，由 `prtool.py init` 从 _seed/ 拷出。
 # 所以这个仓库里不会出现你的私人数据，不需要额外忽略规则。

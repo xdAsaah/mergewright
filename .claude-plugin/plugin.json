@@ -1,14 +1,14 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "pr-merged",
-  "version": "1.2.0",
+  "name": "mergewright",
+  "version": "1.3.0",
   "description": "Land your first merged PR — then keep landing them. A cross-session workbench that finds real candidates, proves the bug, and remembers every repo.",
   "author": {
     "name": "xdAsaah",
     "url": "https://github.com/xdAsaah"
   },
-  "homepage": "https://github.com/xdAsaah/pr-merged#readme",
-  "repository": "https://github.com/xdAsaah/pr-merged",
+  "homepage": "https://github.com/xdAsaah/mergewright#readme",
+  "repository": "https://github.com/xdAsaah/mergewright",
   "license": "MIT",
   "keywords": [
     "open-source",
