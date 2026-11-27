@@ -1,12 +1,24 @@
 # pr-merged
 
-A cross-session workbench for getting open-source PRs merged.
+**Land your first merged PR. Then keep landing them.**
 
-This is not another "how to write a PR" tutorial. It solves one concrete problem: **when you open a new session, how do you find out in a few minutes what is still left in this project, what has already been ruled out, and which candidate to do next?**
+Most contribution attempts die quietly. Not because the code was wrong, but because nobody told you the maintainer doesn't accept injected faults as evidence, that three other places have the same gap, or that someone already has a PR open for the exact issue you just spent two hours on.
+
+`pr-merged` is a cross-session workbench that fixes that. It hunts real candidates, forces you to prove the bug before writing code, keeps you out of PR pileups, and remembers every project's rules, every excluded direction, and every post-mortem between sessions — so the next one starts in minutes instead of from scratch.
 
 English | [中文](README.md)
 
-## Why it exists
+## What changes
+
+| Without it | With it |
+| --- | --- |
+| Re-research the same repo every session | Open `_index.md`, see exactly what is left and what is ruled out |
+| Submit a fix the maintainer rejects as "not real evidence" | Evidence tiers force you to reach L2 before writing a line |
+| Spend two hours on a bug someone already fixed | `issues` flags open PRs, merged-but-unclosed issues, and PR graveyards |
+| Guess which PR type this project actually accepts | Acceptance is observed from the last 20 merged PRs |
+| Forget what the maintainer changed in your branch | Every PR gets a post-mortem in `ledger.md` |
+
+## Why PRs fail
 
 Open-source PRs rarely fail because the code is wrong. They fail for reasons like these:
 
