@@ -140,9 +140,9 @@ def cmd_status(args):
     if platform == "github":
         headers = {"Authorization": f"Bearer {token}",
                    "Accept": "application/vnd.github+json",
-                   "User-Agent": "open-source-pr"}
+                   "User-Agent": "pr-merged"}
     else:
-        headers = {"PRIVATE-TOKEN": token, "User-Agent": "open-source-pr"}
+        headers = {"PRIVATE-TOKEN": token, "User-Agent": "pr-merged"}
 
     proj = urllib.parse.quote(args.repo, safe="")
     repo = args.repo
@@ -561,7 +561,7 @@ def cmd_whoami(args):
         suggested = email
     elif cred_user:
         info = api_get(f"https://api.github.com/users/{cred_user}",
-                       {"User-Agent": "open-source-pr"})
+                       {"User-Agent": "pr-merged"})
         uid = str((info or {}).get("id") or "")
         if uid:
             suggested = f"{uid}+{cred_user}@users.noreply.github.com"
