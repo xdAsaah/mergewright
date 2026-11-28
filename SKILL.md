@@ -146,6 +146,7 @@ python scripts/prtool.py where --project <项目>
 | **读某个 PR 的详情 / 评论 / review / 行内意见** | `scripts/prtool.py pr <PR 链接或 owner/repo#12>`（1 次请求拿全） |
 | **查某仓库的关闭 / 合并明细（谁合的、为何被拒）** | `scripts/prtool.py closed --repo owner/repo`（基础 1 次请求） |
 | **推送前跑该仓 CI 门禁** | `scripts/prtool.py gates --project <项目> --run`（读 `conventions` §2 的表，逐条执行；不加 `--run` 只列清单） |
+| **看我自己的 open PR 现在什么状态** | `scripts/prtool.py mine --repo owner/repo`（checks / 待批 suite / reviewDecision 一次列全，2 次请求） |
 | **取表里没有的 GitHub API 数据** | `scripts/prtool.py api /repos/...`（带 token；禁止手搓匿名请求） |
 | 查某项目当前 PR 状态与合并率 | `scripts/prtool.py status`（或 `scripts/pr-status.ps1`） |
 | **踩到一个坑，判断该记在哪** | `lessons.md` 第一节（判据）+ 第三节（贡献教训）/ 第四节（工具障碍） |
@@ -233,7 +234,7 @@ python scripts/prtool.py where --project <项目>
 
 ## 脚本
 
-**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），十二个子命令齐全，全部从 `git credential` 取 token。
+**优先用 `scripts/prtool.py`**（Python 3.8+，只用标准库，Windows / macOS / Linux 都能跑），十三个子命令齐全，全部从 `git credential` 取 token。
 
 ```bash
 # 建数据目录（只需一次；已存在的文件不覆盖）
@@ -261,8 +262,11 @@ python scripts/prtool.py closed --repo owner/repo --only merged --with-merger --
 # 推送前跑该仓 CI 门禁：读 conventions §2「CI 门禁」表，逐条执行（不加 --run 只列清单）
 python scripts/prtool.py gates --project dify --run --base origin/main
 
+# 看我自己的 open PR：checks / 待批 suite / reviewDecision / merge 状态（2 次请求）
+python scripts/prtool.py mine --repo owner/repo
+
 # 追加一条事件到 JSONL 台账（相对路径按数据目录解析）
-python scripts/prtool.py append --file state/prs.jsonl --json '{"ts":"2026-11-27T02:10:00Z","project":"<项目>","pr":123,"status":"merged"}'
+python scripts/prtool.py append --file state/prs.jsonl --json '{"ts":"2026-11-27T02:10:00Z","project":"<项目>","pr":123,"type":"fix","status":"merged"}'
 
 # 进场采集（只做推导部分，输出可直接粘进 conventions；同时记下工作副本路径）
 python scripts/prtool.py onboard --path <本地仓库路径>
@@ -288,6 +292,7 @@ python scripts/prtool.py whoami
 | `pr <PR>` | 1（GraphQL 一次拿详情/评论/review/行内/文件） |
 | `closed --limit N` | 1；`--reasons` 每条未合并 +1（默认最多 20）；`--with-merger` 每条已合并 +1（默认最多 20） |
 | `gates`（列清单） | 0 次 API；`--run` 执行本地命令，单条默认 600s 超时，本机没有的命令算 skip |
+| `mine` | 2（1 search + 1 批量 GraphQL）；`checks=SUCCESS` 不代表跑过，看「N 待批」 |
 | `api <path>` | 1，`?per_page=100` 也只算 1 |
 | `where` / `onboard` / `append` / `check` / `init` / `whoami`（配置齐全时） | 0 |
 

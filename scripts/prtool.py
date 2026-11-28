@@ -701,6 +701,127 @@ def cmd_status(args):
     return 0
 
 
+# ---------------------------------------------------------------- mine
+
+MINE_FIELDS = """
+      number
+      title
+      state
+      mergeable
+      mergeStateStatus
+      reviewDecision
+      updatedAt
+      reviews(first: 1) { totalCount }
+      comments(first: 1) { totalCount }
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup { state }
+            checkSuites(first: 50) { nodes { status conclusion } }
+          }
+        }
+      }
+"""
+
+
+def check_state(pr):
+    """从 commits(last:1).statusCheckRollup 里取整体结论。"""
+    try:
+        nodes = ((pr.get("commits") or {}).get("nodes") or [])
+        rollup = (((nodes[0] or {}).get("commit") or {}).get("statusCheckRollup") or {})
+        return rollup.get("state") or "-"
+    except (IndexError, AttributeError, TypeError):
+        return "-"
+
+
+def suite_summary(pr):
+    """check suite 汇总：多少等批准（action_required）、多少成功/失败。
+
+    只看 statusCheckRollup 会把「8 个 suite 还在等维护者批准」显示成 SUCCESS，
+    因为 action_required 的 suite 没有 check run。
+    """
+    try:
+        nodes = ((pr.get("commits") or {}).get("nodes") or [])
+        suites = (((nodes[0] or {}).get("commit") or {}).get("checkSuites") or {}).get("nodes") or []
+    except (IndexError, AttributeError, TypeError):
+        suites = []
+    if not suites:
+        return "-"
+    pending = sum(1 for s in suites if (s.get("conclusion") or "") == "ACTION_REQUIRED")
+    bad = sum(1 for s in suites if (s.get("conclusion") or "") in ("FAILURE", "TIMED_OUT", "STARTUP_FAILURE"))
+    ok = sum(1 for s in suites if (s.get("conclusion") or "") == "SUCCESS")
+    bits = []
+    if pending:
+        bits.append(f"{pending}待批")
+    if bad:
+        bits.append(f"{bad}红")
+    if ok:
+        bits.append(f"{ok}成")
+    return "/".join(bits) or "-"
+
+
+def cmd_mine(args):
+    """列出我在某个仓库的 open PR：checks 结论、reviewDecision、mergeState、待审评论数。
+
+    成本：1 次 search + 1 次 GraphQL（所有 PR 用别名一次拿回），不是每个 PR 一次。
+    """
+    if args.platform != "github":
+        print("mine 只支持 GitHub；GitLab 用 status --author", file=sys.stderr)
+        return 1
+    env = api_env("github", args.site)
+    if not env:
+        return 1
+    api, headers = env
+    repo = args.repo
+    site = args.site or "github.com"
+    author = args.author or get_credential_username(site)
+    if not author:
+        print("给一个 --author（GitHub 用户名），或先 git credential 登录", file=sys.stderr)
+        return 1
+
+    q = api_get(f"{api}/search/issues?q=repo:{repo}+author:{author}+type:pr+state:open"
+                f"&per_page={args.limit}", headers)
+    items = (q or {}).get("items") or []
+    nums = [it.get("number") for it in items if it.get("number")][:args.limit]
+    if not nums:
+        print(f"@{author} 在 {repo} 没有 open PR。")
+        return 0
+
+    owner, name = repo.split("/", 1)
+    query = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {"
+    for i, n in enumerate(nums):
+        query += f" p{i}: pullRequest(number: {n}) {{{MINE_FIELDS} }}"
+    query += " } }"
+    data = api_post(f"{api}/graphql", headers, {"query": query, "variables": {"owner": owner, "name": name}})
+    if not data:
+        return 1
+    if data.get("errors"):
+        for m in data["errors"]:
+            print(f"GraphQL 错误：{m.get('message')}", file=sys.stderr)
+        return 1
+    found = []
+    for i, n in enumerate(nums):
+        pr = (((data.get("data") or {}).get("repository") or {}).get(f"p{i}"))
+        if pr:
+            found.append(pr)
+    if not found:
+        print("GraphQL 没有返回这些 PR。", file=sys.stderr)
+        return 1
+
+    print(f"=== {repo}：@{author} 的 open PR（{len(found)} 条）===")
+    for pr in sorted(found, key=lambda x: x.get("number") or 0, reverse=True):
+        updated = short_time(pr.get("updatedAt"))
+        reviews = ((pr.get("reviews") or {}).get("totalCount") or 0)
+        comments = ((pr.get("comments") or {}).get("totalCount") or 0)
+        print(f"#{pr.get('number'):<6} checks={check_state(pr):<9} suites={suite_summary(pr):<12} "
+              f"review={pr.get('reviewDecision') or '-':<17} "
+              f"merge={pr.get('mergeStateStatus') or '-':<12} "
+              f"reviews={reviews} comments={comments}  {updated}  {clip(pr.get('title'), 55)}")
+    print("\n请求：2 次（1 search + 1 GraphQL）")
+    print("「待批」= fork PR 的 workflow 要维护者点 Approve and run，不是绿。")
+    return 0
+
+
 # ---------------------------------------------------------------- issues
 
 def linked_prs_github(api, repo, num, headers):
@@ -1213,16 +1334,88 @@ def cmd_closed(args):
 # 仓库自建的 CI 门禁：pytest + ruff 覆盖不到，开 PR 前必须本地跑
 GUARD_RE = re.compile(
     r"(?:scripts/check_[\w./-]+|scripts/[\w./-]*guard[\w./-]*|dev/[\w./-]*check[\w./-]*"
-    r"|make\s+(?:lint|type-?check)[\w-]*|pyrefly\s+check)"
+    r"|make\s+(?:lint|type-?check)[\w-]*|pyrefly\s+check|pre-commit\s+run)"
+)
+
+# CI 里常见「用一个 action 代替 run:」的 lint 门禁；把 action 映射成本地等价命令。
+# 只收会做检查的，checkout / setup-* / cache / upload 这类不是门禁。
+ACTION_LOCAL = (
+    (re.compile(r"^pre-commit/action|^pre-commit\.ci"), "pre-commit run --all-files"),
+    (re.compile(r"^astral-sh/ruff-action"), "ruff check ."),
+    (re.compile(r"^psf/black"), "black --check ."),
+    (re.compile(r"^isort/isort-action"), "isort --check-only ."),
+    (re.compile(r"^crate-ci/typos"), "typos"),
+    (re.compile(r"^streetsidesoftware/cspell-action"), "cspell ."),
+    (re.compile(r"^pyrefly"), "pyrefly check"),
+)
+
+# 会直接改写文件的 pre-commit hook：只跑其中一两个等于没跑
+REWRITE_HOOKS = {
+    "pyupgrade", "darker", "black", "isort", "ruff", "ruff-format", "autoflake",
+    "end-of-file-fixer", "trailing-whitespace", "docformatter", "add-trailing-comma",
+    "reorder-python-imports", "pretty-format-json", "fix-encoding-pragma",
+}
+
+# 无法映射成本地命令、但必须在 conventions 里留一位的检查（标题校验一类）
+NOTE_ACTIONS = (
+    (re.compile(r"action-semantic-pull-request|action-pr-title|pull-request-title"), "标题校验"),
 )
 
 
-def workflow_ci_rows(root, max_rows=40):
-    """从 `.github/workflows` 按 job → step 抽 `run:` 命令，返回 [(file, job, step, cmd)]。
+def workflow_notes(root):
+    """扫 workflow 里需要人工记进 conventions 的 action（如标题校验），返回 [(file, action, 说明)]。"""
+    wf_dir = os.path.join(root, ".github", "workflows")
+    if not os.path.isdir(wf_dir):
+        return []
+    notes = []
+    for fn in sorted(os.listdir(wf_dir)):
+        if not fn.endswith((".yml", ".yaml")):
+            continue
+        try:
+            with open(os.path.join(wf_dir, fn), encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        for m in re.finditer(r"uses:\s*([\w./-]+@[\w.-]+)", text):
+            for pattern, label in NOTE_ACTIONS:
+                if pattern.search(m.group(1)):
+                    notes.append((fn, m.group(1), label))
+    return list(dict.fromkeys(notes))
 
-    只用标准库，不引 YAML：按缩进做最小解析（jobs 下的 job 名、step 的 name、run 的内联值
-    或 `|` / `>` 块）。目的是把「CI 到底跑哪些命令」变成可抄的清单——PR 模板里的
-    checklist 常常只写 `make lint`，会漏掉仓库自建的 guard 脚本。
+
+def action_local_command(action):
+    """`uses: pre-commit/action@v3` -> 本地等价命令；不是门禁类 action 返回 None。"""
+    for pattern, cmd in ACTION_LOCAL:
+        if pattern.search(action):
+            return cmd
+    return None
+
+
+def precommit_hooks(root):
+    """读 `.pre-commit-config.yaml` 的 hook id 列表；没有配置返回 []。"""
+    for name in (".pre-commit-config.yaml", ".pre-commit-config.yml"):
+        path = os.path.join(root, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            return []
+        return re.findall(r"^\s*-\s*id:\s*([\w.-]+)\s*$", text, re.MULTILINE)
+    return []
+
+
+def workflow_ci_rows(root, max_rows=40):
+    """从 `.github/workflows` 按 job → step 抽门禁，返回 [(file, job, step, cmd, kind)]。
+
+    两种步骤都收：
+      - `run:` 的原文命令（kind="run"）
+      - `uses:` 里的检查类 action（kind="action"），例如 `pre-commit/action`，
+        映射成本地等价命令。**这一步很关键**：lint 走 action 时 workflow 里根本
+        没有 `run:`，只抽 run 会把 lint 门禁整个漏掉。
+
+    只用标准库，不引 YAML：按缩进做最小解析。
     """
     wf_dir = os.path.join(root, ".github", "workflows")
     if not os.path.isdir(wf_dir):
@@ -1261,10 +1454,17 @@ def workflow_ci_rows(root, max_rows=40):
             if m and job:
                 step, run_indent = m.group(1).strip().strip("\"'"), None
                 continue
+            if s.startswith("uses:"):
+                action = s[5:].strip().strip("\"'")
+                local = action_local_command(action)
+                if local and job:
+                    rows.append((fn, job, f"{step or '-'}（uses: {action}）", local, "action"))
+                run_indent = None
+                continue
             if s.startswith("run:"):
                 val = s[4:].strip()
                 if val and val not in ("|", ">", "|-", ">-"):
-                    rows.append((fn, job or "-", step or "-", val))
+                    rows.append((fn, job or "-", step or "-", val, "run"))
                     run_indent = None
                 else:
                     run_indent = indent
@@ -1272,7 +1472,7 @@ def workflow_ci_rows(root, max_rows=40):
             if run_indent is not None:
                 if indent > run_indent:
                     if s and s not in ("|", ">"):
-                        rows.append((fn, job or "-", step or "-", s))
+                        rows.append((fn, job or "-", step or "-", s, "run"))
                 else:
                     run_indent = None
 
@@ -1283,10 +1483,10 @@ def workflow_ci_rows(root, max_rows=40):
 
     def score(row):
         cmd = row[3]
-        s = 0
+        s = -1000 if row[4] == "action" else 0
         if GUARD_RE.search(cmd):
             s -= 100
-        if re.search(r"\b(?:pytest|pyrefly|ruff|type-?check|lint)\b", cmd):
+        if re.search(r"\b(?:pytest|pyrefly|ruff|type-?check|lint|pre-commit)\b", cmd):
             s -= 20
         if re.match(r"^(?:uv |make |npm |pnpm |vp |yarn )", cmd):
             s -= 10
@@ -1310,7 +1510,11 @@ CMD_SOLO = {"pytest", "make", "npm", "pnpm", "uv", "ruff", "mypy", "tox", "cargo
 
 def looks_like_command(s):
     s = (s or "").strip()
-    if not s or s.startswith("-"):
+    if not s or s.startswith(("-", "#")):
+        return False
+    if s.startswith(("uses:", "with:", "env:", "id:", "name:")):
+        return False
+    if re.match(r"^[A-Za-z_][\w-]*:\s", s):  # YAML 键值（extra_args: --all-files）不是命令
         return False
     return " " in s or s in CMD_SOLO or s.startswith(CMD_PREFIXES)
 
@@ -1351,7 +1555,10 @@ def parse_gate_rows(text):
             header_skipped = True  # 表头
             continue
         joined = " | ".join(cells)
-        spans = re.findall(r"`([^`]+)`", joined)
+        # 先只看「run 命令」那一列（第 3 列），找不到再全行找
+        spans = re.findall(r"`([^`]+)`", cells[2]) if len(cells) >= 3 else []
+        if not spans:
+            spans = re.findall(r"`([^`]+)`", joined)
         cmd = next((s for s in spans if looks_like_command(s)), "")
         if not cmd:
             continue  # 这一行没有可执行的完整命令（例如只列了脚本名和参数）
@@ -1631,18 +1838,39 @@ def cmd_onboard(args):
         print()
         print("| 工作流 / job | 步骤 | run 命令 |")
         print("| --- | --- | --- |")
-        for fn, job, step, cmd in ci_rows:
+        for fn, job, step, cmd, _kind in ci_rows:
             print(f"| {fn} / {job} | {step} | `{cmd}` |")
         guards = [r for r in ci_rows if GUARD_RE.search(r[3])]
         if guards:
             print()
-            print("**上面带 `check_*` / `*-guard*` / `make type-check*` 的是仓库自建门禁，"
+            print("**上面带 `check_*` / `*-guard*` / `make type-check*` / `pre-commit` 的是仓库自建门禁，"
                   "`pytest` + `ruff` 不覆盖：**")
-            for _, job, step, cmd in guards:
+            for _, job, step, cmd, _kind in guards:
                 print(f"- `{cmd}`（{job} / {step}）")
             print()
             print("带 `--base-rev` 的按 PR 基线填（本地用 `origin/main` 或 `HEAD^1`）；"
                   "CI 里用的是 `HEAD^1`。")
+
+        hooks = precommit_hooks(root)
+        if hooks:
+            print()
+            print("### pre-commit hooks（`.pre-commit-config.yaml`，`pre-commit run --all-files` 会全跑）")
+            print()
+            print("| hook | 会不会改文件 | 本地单跑 |")
+            print("| --- | --- | --- |")
+            for hid in hooks:
+                rewrite = "**会改文件**" if hid in REWRITE_HOOKS else "不会"
+                print(f"| `{hid}` | {rewrite} | `pre-commit run {hid} --all-files` |")
+            print()
+            print("只跑 flake8 / isort 是**子集**：`pyupgrade` 会删 `.encode(\"utf-8\")` 这类默认参数、"
+                  "`darker` 会按行宽重排，漏跑就等 CI 红。")
+
+        notes = workflow_notes(root)
+        if notes:
+            print()
+            print("**需要人工抄进 `conventions` 的检查（无法本地执行）：**")
+            for fn, action, label in notes:
+                print(f"- {fn}：`{action}` → {label}，把规则/正则写进 §1「标题校验」行")
     else:
         print("| CI 门禁 | 未发现 `.github/workflows`，需人工确认该仓的检查命令 | [推导] |")
 
@@ -1932,6 +2160,7 @@ def cmd_check(args):
         return 1 if problems else 0
 
     # 1. JSONL 合法性
+    recorded_prs = set()  # (project, "123")：给 ledger 交叉校验用
     for name in ("prs.jsonl", "scans.jsonl"):
         path = os.path.join(data, "state", name)
         if not os.path.isfile(path):
@@ -1952,6 +2181,17 @@ def cmd_check(args):
                 for key in ("ts", "project"):
                     if key not in obj:
                         add("err", f"state/{name}:{i}", f"缺必填字段 {key}")
+                if name != "prs.jsonl":
+                    continue
+                if obj.get("pr") not in (None, ""):
+                    recorded_prs.add((str(obj.get("project")), str(obj.get("pr"))))
+                # 类型复盘按 type 统计，写错/漏写就没法现算
+                pr_type = obj.get("type")
+                if not pr_type:
+                    add("warn", f"state/{name}:{i}",
+                        "缺 type 字段（类型复盘要用 fix/test/feat/perf/docs）")
+                elif pr_type not in ("fix", "test", "feat", "perf", "docs"):
+                    add("err", f"state/{name}:{i}", f"type 不在五类里：{pr_type}")
 
     # 1b. 工作副本记录：格式校验 + 本机路径是否还在
     ws_path = os.path.join(data, "state", "workspaces.jsonl")
@@ -2026,6 +2266,24 @@ def cmd_check(args):
 
     # 3. 所有 markdown 里的相对路径引用
     #    references/ scripts/ _seed/ → 包；conventions/ projects/ state/ → 数据
+    # 4a. ledger 的「### #N」必须能在 state/prs.jsonl 找到
+    #     只查 PR 记录标题，不查正文里其他作者的 PR 号（例如「#47357 有 3 条 open PR」）。
+    proj_root = os.path.join(data, "projects")
+    if recorded_prs and os.path.isdir(proj_root):
+        for project in sorted(os.listdir(proj_root)):
+            if project.startswith("_"):
+                continue
+            ledger = os.path.join(proj_root, project, "ledger.md")
+            if not os.path.isfile(ledger):
+                continue
+            with open(ledger, encoding="utf-8", errors="replace") as f:
+                for i, line in enumerate(f, 1):
+                    m = re.match(r"^###\s+#(\d+)", line.strip())
+                    if m and (project, m.group(1)) not in recorded_prs:
+                        add("warn", f"projects/{project}/ledger.md:{i}",
+                            f"#{m.group(1)} 在 state/prs.jsonl 里没有记录"
+                            "（append 一条，带 project/pr/type/status）")
+
     link_re = re.compile(r"`((?:references|conventions|projects|scripts|state|_seed)/[^`\s]+?\.(?:md|py|ps1|jsonl))`")
 
     def resolve(target):
@@ -2240,6 +2498,14 @@ def main(argv=None):
     gt.add_argument("--path", default="", help="工作副本路径，默认查 state/workspaces.jsonl")
     gt.add_argument("--data", default="", help="数据目录，默认 ~/.mergewright")
     gt.set_defaults(func=cmd_gates)
+
+    m2 = sub.add_parser("mine", help="列我在某仓库的 open PR：checks / review / merge 状态（2 次请求）")
+    m2.add_argument("--repo", required=True, help="owner/repo")
+    m2.add_argument("--author", default="", help="GitHub 用户名，默认从凭据库取")
+    m2.add_argument("--limit", type=int, default=20, help="最多列多少条，默认 20")
+    m2.add_argument("--platform", default="github", choices=["github"], help="只支持 GitHub")
+    m2.add_argument("--site", default="", help="默认 github.com")
+    m2.set_defaults(func=cmd_mine)
 
     args = ap.parse_args(argv)
     try:

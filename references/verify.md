@@ -30,25 +30,29 @@
 
 **步骤**：
 
-1. 备份实现文件
+1. `git diff --stat` 记下当前改动范围（恢复时要能一眼看出有没有多改）
 2. 改坏对应分支（删掉它、或改成错误行为）
 3. 跑测试，确认**只有对应用例变红**
-4. 恢复实现，确认全绿
+4. **用 `git checkout -- <实现文件>` 恢复**；该文件还有别的未提交改动时，先 `git stash push -- <实现文件>`，恢复后再 `git stash pop`
+5. `git diff --stat` 确认只剩原来的改动，再跑一次确认全绿
 
 ```powershell
-# 1. 备份
-Copy-Item <实现文件> tmp\orig.bak -Force
-# 2. 改坏（删掉某个分支，或改成错误行为）
-$text = Get-Content <实现文件> -Raw
-$mutated = $text -replace '<对应分支的正则>', ''
-[IO.File]::WriteAllText((Join-Path (Get-Location) '<实现文件>'), $mutated, (New-Object Text.UTF8Encoding($false)))
-# 3. 跑，看哪条红
+git diff --stat
+# 改坏：正则替换。写回用 UTF8 无 BOM；不要用 Set-Content / Out-File，它们会按平台换行重写整个文件
+$p = Resolve-Path <实现文件>
+$text = Get-Content $p -Raw
+[IO.File]::WriteAllText($p, ($text -replace '<对应分支的正则>', ''), (New-Object Text.UTF8Encoding($false)))
 <该项目的测试命令，见 conventions>
-# 4. 恢复
-Copy-Item tmp\orig.bak <实现文件> -Force
+# 恢复：不要靠备份副本，直接回到 git 里的版本
+git checkout -- <实现文件>
+git diff --stat
 ```
 
-**判定标准**：如果改坏后测试仍然全绿，那这条用例没有守护价值，要重写。
+**判据**：
+
+- 改坏后测试仍然全绿 → 这条用例没有守护价值，要重写。
+- **`(?m)$` 在 Windows 上可能匹配不到行尾**：文件是 CRLF 时行尾是 `\r`，正则要写 `\r?$`，或按行处理。用 `git ls-files --eol <文件>` 先看一眼换行。
+- **同一处修复有多段独立逻辑时，逐段单独变异**：两段各自能红，PR 的 Verified 段才能写清「哪条用例守住哪一半」。
 
 ## 四、先红后绿（修 bug 类）
 
@@ -144,6 +148,7 @@ Copy-Item tmp\orig.bak <实现文件> -Force
 **写进证据的位置**：`candidates.md` 的「待提」档，跨后端查询类候选的证据摘要必须含三行——① 字段怎么建的（analyzer / keyword / dynamic）② 查询是否分析 ③ 值里的分隔符拆 token 后会不会 0 命中。缺一行不许升到待提。
 
 > 真实案例（2026-11-27，dify vdb-couchbase #47401）：照 ES 家族的 `term` 形状写了 `TermQuery`，但 Couchbase 索引 `default_analyzer: standard` + `metadata.dynamic: true`，连字符 UUID 被拆成 5 个 token，整串 term 在真集群 0 命中；mock 断言全绿。dosubot 指出后改成 analyzed 的 `match` + `and` 算子。**那份索引 JSON 就在同一个文件里，读过却没和「term 不分析」连起来。**
+
 ## 十、不许夸大：四种量词与四种真实翻车
 
 > 规则本体在 `SKILL.md` 硬规则 15。这一节只放**怎么判断自己正在夸大**。
@@ -176,3 +181,15 @@ Copy-Item tmp\orig.bak <实现文件> -Force
 
 - 量的 → 把量法一起写（工具、样本、环境），数字才有说服力
 - 想的 → 就地改成「未测」，然后决定要不要花时间量。**超过半小时的估价尤其要标「未测」**，因为它会直接影响用户对下一步的取舍
+
+## 十一、本机把测试跑起来（依赖装不上时）
+
+CI 的命令原样抄到本机经常跑不通：没有 `make`、平台相关的依赖编译失败、锁文件解析被 `exclude-newer` 过滤、大 wheel 超时。固定动作：
+
+1. 优先用仓库自带的 `uv run` / `api/.venv`；**别在项目 venv 里反复重装**
+2. 跑不通再建独立环境：`python -m venv .venv-<用途>`（放仓库外或 gitignore 里）
+3. 按 `pyproject` 的 `[project].dependencies` 装，不走 lockfile；慢就换镜像源
+4. 跑测试时把仓库根目录挂进 `PYTHONPATH`（`PYTHONPATH=<repo>`）
+5. 把**实际跑通的那条命令原文**记进 `conventions` §2 的「本机等价命令」，下次直接抄
+
+`uv sync` / `pip install` 失败不等于项目坏了：先看真实错误（常见是 `exclude-newer` 过滤掉 build 依赖、或 wheel 超时），再决定是覆盖过滤参数还是绕过。**不要为了跑测试去改项目的依赖声明。**

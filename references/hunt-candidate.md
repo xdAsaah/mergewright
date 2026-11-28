@@ -47,6 +47,12 @@ Select-String -Path <源码目录>\*.<ext> -Pattern '\.slice\(0,\s*\w+\)|substri
 
 > 案例（匿名）：某个项目里修「子进程不弹控制台窗口」，只找到一处漏项就提了 PR，维护者合并时补了另外两处。**同一类漏项要一次搜完，否则显得没做功课。**
 
+**「同族」按组件边界算，不按 bug 形状算**：
+
+- 同一个模块、同一份输入输出约定里的漏项 → 一次修完，进一个 PR
+- 跨模块的同形状问题 → 另开 PR，正文第一段写 `same pattern as #NNN, kept separate so the change stays reviewable`，并在 `candidates.md` 记一行 follow-up
+- **上一条同族 PR 还没合时，不叠加第二条**——连着开同形状 PR 会被读成批量补丁/刷数量，宁可等
+
 ### 5. 平台差异扫描
 
 维护者通常只在自己的开发平台上跑。你换个平台就可能撞到：

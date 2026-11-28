@@ -79,7 +79,26 @@ git diff <你的最后一个 commit>..fork/<你的分支>
 - 有名额空出来（合并或关闭）才回到 `hunt-candidate.md`
 - 破例只有用户明确要求，并且要在 `candidates.md` 记一行理由
 
-## 七、不要做的事
+**零 review 也要有产出**（都不产生新 PR）：
+
+1. 给已有候选补证据：L2 / L3 的复现、日志、真实包，写进 `candidates.md` 的「待验证」档（只验证，不动代码）
+2. 把 PR 里写着「未验证，等 e2e」的部分查清楚；查不了就在 PR 里补一句说明，别让它一直挂着
+3. 更新 `conventions` 里过期的 `[观察]`（首响中位、合并节奏这类 90 天就该重测的）
+4. 读维护者最近合并的 PR，把「他关心什么」写进 `profile.md`
+5. 给下一条候选写红测试，**可以写、可以跑，但不开分支、不提交**
+
+## 七、CI 变红了怎么办
+
+1. **先确认红的 run 属于哪个 head**：`gh pr view <n> --json headRefOid` 与失败 run 的 `headSha` 比对。旧 head 的红 run 是历史——按新 head 重跑过就翻篇，**不要照着旧日志改代码**
+2. 自己分支 + 零 review + 失败原因是 lint / 格式 → `git commit --amend` + `git push --force-with-lease`，保持单提交
+3. 已经有人 review（哪怕只是 dosubot 之外的维护者留言）→ **追加 commit，不 force**，别重写他的 review 上下文
+4. 外部原因（依赖拉取失败、flaky、runner 挂）→ 先重跑一次再判断，**不要为了变绿改代码**
+5. 失败原因是 hook / formatter 改写了文件 → 把 hook 的 diff 抄进 `ledger.md`，并在 `conventions` §2 补一条本机可执行的等价检查
+6. 修完在 PR 里留一句「fixed the lint failure from the previous head」，免得后面翻 Actions 列表时误读
+
+**fork PR 的绿色是假象**：`action_required` 的 suite 没有 check run，`statusCheckRollup` 会显示 SUCCESS。用 `prtool.py mine --repo <repo>` 看「N 待批」，别把「没有红」当成「跑过了」。
+
+## 八、不要做的事
 
 - ❌ 在 issue 里催 PR
 - ❌ 维护者说「我自己改」后，同类问题再提第二次
