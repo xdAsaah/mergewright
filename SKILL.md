@@ -119,7 +119,7 @@ python scripts/prtool.py where --project <项目>
 11. **取数只走带 token 的通道。** `api.github.com` 的匿名额度只有 **60 次/小时/IP**，认证是 5000 次/小时；而 `web_fetch` 这类抓取工具加不了 `Authorization` 头，用它拉 API 等于匿名，一轮"按仓取数 + 逐个 PR 深读"就能把额度吃光。取数只准用三种：`scripts/prtool.py`（自带 token）、`gh api` / `gh pr view`、本地 `git`。**额度耗尽时 `prtool.py` 直接报错退出（退出码 2），此时数据是缺的，绝不能据此判断「仓库没有 PR」「项目停收了」。** 各命令的请求成本见「脚本」一节的表。
 12. **PR 的语言默认英文，这是默认值，不是从仓库推导出来的。** 标题、正文、commit message、给维护者的回复，一律英文。只有当用户对本次或本项目**明确说过「用中文」**时才改：写中文，同时把 `conventions/<项目>.md` 的「PR 正文语言 / 提交语言」改标成 `[用户定] 中文`。**仓库模板文件本身是中文、历史 commit 是中文，都不构成理由**——文件语言不是写作语言。详见 `references/write-pr.md` 第零节。
 13. **同一个项目同时最多 3 条 open PR，不分类型。** 到第 3 条就只跟进：按维护者要求改现有 PR、等评审结果，**不再挖新候选、不提新 PR**。只有用户明确要求才能破例，并在 `candidates.md` 记一行理由。开 PR 前先看 `status --author` 输出的「在审 N/3」。
-14. **推送前跑该仓 CI 的门禁命令，不是只跑 `pytest` + `ruff`。** 清单来自 `conventions/<项目>.md` §2（由 `onboard` 从 `.github/workflows` 逐 job 抽出），重点是 `scripts/check_*.py`、`dev/*-check-local`、`make type-check*` 这类仓库自建脚本；带 `--base-rev` 的用 PR 基线。**PR 正文里「已验证」必须分级**：单测只能证明请求/参数形状，真实语义（尤其跨后端行为）没跑过就写「未验证，等 e2e」，见 `references/verify.md` 第九节。
+14. **推送前跑该仓 CI 的门禁命令，不是只跑 `pytest` + `ruff`。** 清单来自 `conventions/<项目>.md` §2（由 `onboard` 从 `.github/workflows` 逐 job 抽出），重点是 `scripts/check_*.py`、`dev/*-check-local`、`make type-check*` 这类仓库自建脚本；带 `--base-rev` 的用 PR 基线。**PR 正文里「已验证」必须分级**：单测只能证明请求/参数形状，真实语义（尤其跨后端行为）没跑过就写「未验证，等 e2e」，见 `references/verify.md` 第九节。**一条链不等于每一步都跑了**：`a && b && c` 中断时，后面的步骤写「未执行」，不写「通过」；写「已验证 X」必须在输出里指出 X 自己的成功行（`references/verify.md` 第十二节）。
 15. **不许夸大。影响面、成本、频率、期望值这四项，没测过就写「未测」，测过就写数字和量法。** 写进 `excluded.md` / `candidates.md` / 汇报里的每个量词——**最多、至少、唯一、全部、必然、罕见**——必须能在下一句找到出处。四种真实翻车见 `references/verify.md` 第十节：把上限当常态、把没查过写成成本高、把偏好当依据、把自己的选择写成被外部带偏。判断标准一句话：**每个数字后面问「我是量的还是想的」，想的就标「未测」。**
 
 ## 路由表
@@ -135,6 +135,8 @@ python scripts/prtool.py where --project <项目>
 | 在某项目里找可提的 PR 候选 | `references/hunt-candidate.md` |
 | 候选怎么验证、怎么算证据够 | `references/verify.md` |
 | 写 PR 标题 / 正文 / commit | `references/write-pr.md` + `conventions/<项目>.md` |
+| **改 / 删文档里的一节**（版本化文档站） | `references/verify.md` 第十三节：先查这页服务哪些版本、旧 tag 还认不认 |
+| **判断某步 CI 到底跑没跑** | `references/verify.md` 第十二节：链式命令只认各自成功行 |
 | 维护者回复了、要不要改、怎么止损 | `references/follow-up.md` |
 | 找严重 bug（S1/S2 线） | `references/severe-scan.md` |
 | **做覆盖缺口清单 / 判断某条不变量有没有守护** | `projects/<项目>/coverage.md`，从 `_seed/projects/_template/coverage.md` 建；判定细则见 `references/verify.md` 第八节 |

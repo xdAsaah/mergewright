@@ -152,6 +152,7 @@ git -c user.name=<你的用户名> -c user.email=<noreply 邮箱> commit -m "<�
 | **把 mock 形状断言写成「已验证行为」** | 单测断言了请求体字段，正文写「已验证过滤生效」；真集群语义没验 | 正文拆成两句：「单测证明请求形状」+「真实语义未验证，等 e2e」；跑不了 e2e 就明说 |
 | **拿兄弟 provider / 后端的上游形状当语义** | 照 ES 的 `term` 写 Couchbase 的 `TermQuery`，字段被 standard analyzer 拆了 token，0 命中 | 先读目标后端的索引映射再写查询，三必答见 `references/verify.md` 第九节 |
 | **把 PR 模板的 checklist 当 CI 门禁** | 模板只写 `make lint && make type-check`，CI 另跑 6 个 `scripts/check_no_new_*.py` | 门禁以 `.github/workflows` 的 `run:` 为准，用 `onboard` 抽，逐条本地跑 |
+| **把链式命令的退出码当每步结果** | `checkA && checkB && checkC` 挂在 B，正文却写「C 通过」 | 每步找自己的成功行；没跑到的写「未执行」，见 `references/verify.md` 第十二节 |
 | 上个 PR 的 commit 混进来 | PR 显示多余文件 | 从默认分支新建分支再 cherry-pick |
 | 只修撞到的那一处 | 维护者合并时补了同类漏项 | 全库搜一遍同类再提 |
 | 注释/正文里的类比没验证 | 维护者只改了你这句注释 | 写进 PR 的文字也要能站住 |
