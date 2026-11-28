@@ -10,7 +10,7 @@
       "name": "mergewright",
       "source": "./",
       "description": "A cross-session workbench that finds real candidates, proves the bug, and remembers every repo.",
-      "version": "1.9.1",
+      "version": "1.10.0",
       "license": "MIT",
       "keywords": ["open-source", "pull-request", "contributing", "agent-skill"]
     }

@@ -138,6 +138,7 @@ python scripts/prtool.py where --project <项目>
 | 维护者回复了、要不要改、怎么止损 | `references/follow-up.md` |
 | 找严重 bug（S1/S2 线） | `references/severe-scan.md` |
 | **做覆盖缺口清单 / 判断某条不变量有没有守护** | `projects/<项目>/coverage.md`，从 `_seed/projects/_template/coverage.md` 建；判定细则见 `references/verify.md` 第八节 |
+| **判断某条安全承诺有没有测试钉住**（实现可能没问题，只是没人钉住） | `references/promise-nails.md`；结论写进 `coverage.md` 的「承诺 × 钉子」一节 |
 | **这次该提哪类 PR、问用户选类型** | `references/first-pr.md` 第六节 + `conventions/<项目>.md` 的「PR 类型接受度」 |
 | **从 issue 里找候选** | `references/hunt-candidate.md` 第 7 种手法 |
 | **判断要不要先开 issue** | `conventions/<项目>.md` 的 3.2「issue 政策」 |
