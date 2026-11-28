@@ -98,6 +98,17 @@ git -c user.name=<你的用户名> -c user.email=<noreply 邮箱> commit -m "<�
 
 ## 五、开 PR 的必选项
 
+**先过自审清单（这一关不过就别 push / 开 PR）**——维护者不是你的第一轮 review：
+
+1. **入口守卫 vs 下游真实读取**：守卫加在入口，下游每条真实读取路径（`value.type`、`Object.entries`、`catch` 后整表丢弃……）都受它保护吗？加一层守卫 ≠ 收口
+2. **外部输入形状全枚举**：按 `references/verify.md` §四 场景表列（理想 / 相邻 / 并存 / 顺序），每类给出实际行为
+3. **每条新用例单独回退变红**：只回退实现，确认恰好该守的用例红、其余绿——整组一起回退不算
+4. **已知边界逐条有验证**：把边界列出来，每条给命令 + 输出；没验的写「未验证」
+5. **正文与最终实现一致**：改过两轮后重写 Solution / Edge cases，旧说法必须删
+6. **元规则**：评审每发现一个问题，先问「自审为什么没查到」，把缺的那步写进 `conventions` §2 或本清单，再改代码。**连续两轮被指出自审就该发现的问题，说明清单没用起来**，不是运气差
+
+其余必选项：
+
 - **在审数没到上限**：`status --author` 的「在审 N/3」，N 必须 < 3（见硬规则 13）。到 3 条就别开，去 `follow-up.md` 跟进
 - **本地跑过该仓 CI 门禁**：`conventions/<项目>.md` §2 的逐 job 清单（`scripts/check_*.py`、`dev/*-check-local`、`make type-check*`），**不是只跑 `pytest` + `ruff`**；带 `--base-rev` 的按 PR 基线（本地用 `origin/main` 或分支起点）。这份清单由 `onboard` 从 `.github/workflows` 抽，别拿 PR 模板的 checklist 代替——模板会漏
 - **Allow edits by maintainers**：`conventions` 说是要求就必勾（`maintainer_can_modify: true`）

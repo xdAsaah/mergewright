@@ -121,6 +121,7 @@ python scripts/prtool.py where --project <项目>
 13. **同一个项目同时最多 3 条 open PR，不分类型。** 到第 3 条就只跟进：按维护者要求改现有 PR、等评审结果，**不再挖新候选、不提新 PR**。只有用户明确要求才能破例，并在 `candidates.md` 记一行理由。开 PR 前先看 `status --author` 输出的「在审 N/3」。
 14. **推送前跑该仓 CI 的门禁命令，不是只跑 `pytest` + `ruff`。** 清单来自 `conventions/<项目>.md` §2（由 `onboard` 从 `.github/workflows` 逐 job 抽出），重点是 `scripts/check_*.py`、`dev/*-check-local`、`make type-check*` 这类仓库自建脚本；带 `--base-rev` 的用 PR 基线。**PR 正文里「已验证」必须分级**：单测只能证明请求/参数形状，真实语义（尤其跨后端行为）没跑过就写「未验证，等 e2e」，见 `references/verify.md` 第九节。**一条链不等于每一步都跑了**：`a && b && c` 中断时，后面的步骤写「未执行」，不写「通过」；写「已验证 X」必须在输出里指出 X 自己的成功行（`references/verify.md` 第十二节）。
 15. **不许夸大。影响面、成本、频率、期望值这四项，没测过就写「未测」，测过就写数字和量法。** 写进 `excluded.md` / `candidates.md` / 汇报里的每个量词——**最多、至少、唯一、全部、必然、罕见**——必须能在下一句找到出处。四种真实翻车见 `references/verify.md` 第十节：把上限当常态、把没查过写成成本高、把偏好当依据、把自己的选择写成被外部带偏。判断标准一句话：**每个数字后面问「我是量的还是想的」，想的就标「未测」。**
+16. **开 PR 前先自审，不拿评审当第一轮 review。** 自审清单见 `references/write-pr.md` 第五节：入口守卫 vs 下游真实读取（加一层守卫 ≠ 收口）、输入形状全枚举、每条新用例单独回退变红、已知边界逐条有验证、正文与最终实现一致。**连续两轮 review 才被指出的问题，按「自审没做完」处理**：先把缺的那步补进 `conventions` §2 或这份清单，再改代码——不是只改这一次。
 
 ## 路由表
 
@@ -135,6 +136,7 @@ python scripts/prtool.py where --project <项目>
 | 在某项目里找可提的 PR 候选 | `references/hunt-candidate.md` |
 | 候选怎么验证、怎么算证据够 | `references/verify.md` |
 | 写 PR 标题 / 正文 / commit | `references/write-pr.md` + `conventions/<项目>.md` |
+| **开 PR 前自审（不该让评审替你找问题）** | `references/write-pr.md` §五 自审清单 + 硬规则 16 |
 | **改 / 删文档里的一节**（版本化文档站） | `references/verify.md` 第十三节：先查这页服务哪些版本、旧 tag 还认不认 |
 | **判断某步 CI 到底跑没跑** | `references/verify.md` 第十二节：链式命令只认各自成功行 |
 | 维护者回复了、要不要改、怎么止损 | `references/follow-up.md` |
